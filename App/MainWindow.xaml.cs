@@ -38,6 +38,16 @@ public partial class MainWindow : Window
     List<Design> designs = [];
     string? lastAppliedDesign;   // the bridge cannot ask Glamourer "which design is on"; remember what we applied
     bool polling;
+    Dictionary<Mod, Overlap>? overlapsAll, overlapsInCollection;   // cached; reset on reload, collection change, mod toggle
+    Mod? overlapFocus;                                             // "Show only mods overlapping this"
+
+    Dictionary<Mod, Overlap> Overlaps(bool inCollection)
+    {
+        if (pen == null) return [];
+        if (inCollection)
+            return overlapsInCollection ??= CollectionBox.SelectedItem is Collection c ? Analysis.Overlaps(pen, c).ToDictionary(o => o.Mod) : [];
+        return overlapsAll ??= Analysis.Overlaps(pen, null).ToDictionary(o => o.Mod);
+    }
 
     public MainWindow()
     {
@@ -56,6 +66,8 @@ public partial class MainWindow : Window
             var (p, d) = await Task.Run(() => (PenumbraData.Load(pluginConfigs, Path.Combine(appData, "cache")), GlamourerData.Load(pluginConfigs)));
             pen = p;
             designs = d;
+            overlapsAll = overlapsInCollection = null;
+            overlapFocus = null;
         }
         catch (Exception e)
         {
@@ -130,6 +142,9 @@ public partial class MainWindow : Window
     {
         if (pen == null || CollectionBox.SelectedItem is not Collection c) return;
         foreach (var m in pen.Mods) m.Enabled = pen.Effective(c, m.Dir)?.Enabled == true;
+        overlapsInCollection = null;
+        RefreshOverlaps();
+        CollectionViewSource.GetDefaultView(pen.Mods).Refresh();
         ModGrid.Items.Refresh();
         StatusText.Text = $"Collection “{c.Name}”: {pen.Mods.Count(m => m.Enabled)} of {pen.Mods.Count} mods enabled.";
     }
@@ -138,11 +153,26 @@ public partial class MainWindow : Window
     bool ModMatches(object o)
     {
         var m = (Mod)o;
+        if (overlapFocus != null)   // focus mode ignores the other filters: show the mod and everything it overlaps
+            return m == overlapFocus || Overlaps(ModEnabledOnly.IsChecked == true).TryGetValue(overlapFocus, out var f) && f.With.Contains(m);
         var q = ModSearch.Text.Trim();
-        return (q == "" || Has(m.Name, q) || Has(m.Author, q) || Has(m.AllTags, q) || Has(m.Dir, q) || Has(m.Folder, q) || Has(m.Note, q))
+        return (q == "" || Has(m.Name, q) || Has(m.Author, q) || Has(m.AllTags, q) || Has(m.Dir, q) || Has(m.Folder, q) || Has(m.Note, q)
+                || m.Outfits.Any(o => Has(o, q)) || q.Length >= 5 && m.AllPaths.Any(x => Has(x, q)))   // "e6015", "chara/human/c0201"
             && InFolder(m.Folder, ModFolder.SelectedItem)
             && (ModEnabledOnly.IsChecked != true || m.Enabled)
-            && (ModFavOnly.IsChecked != true || m.Favorite);
+            && (ModFavOnly.IsChecked != true || m.Favorite)
+            && (ModOverlapOnly.IsChecked != true || Overlaps(ModEnabledOnly.IsChecked == true).ContainsKey(m));
+    }
+
+    void ModFocus_Click(object sender, RoutedEventArgs e) => SetOverlapFocus(overlapFocus == null ? SelectedMod : null);
+
+    void SetOverlapFocus(Mod? m)
+    {
+        overlapFocus = m;
+        if (pen != null) CollectionViewSource.GetDefaultView(pen.Mods).Refresh();
+        ModFocusBtn.Content = overlapFocus == null ? "Show only mods overlapping this" : "Show all mods";
+        StatusText.Text = overlapFocus == null ? "Showing all mods (filters apply again)."
+            : $"Showing “{overlapFocus.Name}” and the mods it overlaps{(ModEnabledOnly.IsChecked == true ? " in game in this collection" : "")}. Click “Show all mods” to go back.";
     }
 
     void ModFilter_Changed(object sender, RoutedEventArgs e)
@@ -178,6 +208,12 @@ public partial class MainWindow : Window
         ModInfo.Text = string.Join("\n", lines);
         var used = Analysis.UsedBy(designs, m);
         ModUsedBy.Text = used.Count == 0 ? "none" : string.Join("\n", used.Select(d => $"• {d.Name}"));
+        var others = Overlaps(false).TryGetValue(m, out var ov) ? ov.With : [];
+        ModOverlaps.Text = others.Count == 0 ? "none" : string.Join("\n", others.Take(25).Select(o =>
+        {
+            var (gear, files) = Analysis.Shared(m, o);
+            return $"{(o.Enabled ? "✓" : "•")} {o.Name}: {(gear.Count > 0 ? string.Join(", ", gear.Take(4)) + (gear.Count > 4 ? "…" : "") + " · " : "")}{files} shared file{(files == 1 ? "" : "s")}";
+        })) + (others.Count > 25 ? $"\n…and {others.Count - 25} more" : "");
         ModDesc.Text = m.Description;
         ModToggle.Content = m.Enabled ? "Disable in collection (in game)" : "Enable in collection (in game)";
     }
@@ -201,9 +237,53 @@ public partial class MainWindow : Window
         var old = pen.Effective(c, m.Dir);
         c.Settings[m.Dir] = new ModSetting(want, old?.Priority ?? 0, old?.OptionsJson ?? "{}");   // mirror what Penumbra now has
         m.Enabled = want;
+        overlapsInCollection = null;
+        RefreshOverlaps();
         ModGrid.Items.Refresh();
         ShowMod(m);
         StatusText.Text = $"{(want ? "Enabled" : "Disabled")} “{m.Name}” in collection “{c.Name}”.";
+    }
+
+    // ---------------------------------------------------------------- overlaps tab
+    void RefreshOverlaps()
+    {
+        if (pen == null) return;
+        var inGame = OverlapEnabledOnly.IsChecked == true;
+        var list = Overlaps(inGame).Values.OrderBy(o => o.Mod.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        OverlapGrid.ItemsSource = list;
+        CollectionViewSource.GetDefaultView(list).Filter = OverlapMatches;
+        var gear = list.SelectMany(o => o.Outfits).Distinct().Count();
+        var files = list.SelectMany(o => o.Paths).Distinct().Count();
+        var c = CollectionBox.SelectedItem as Collection;
+        OverlapText.Text = list.Count == 0 ? "No overlaps." :
+            $"{list.Count} mods change a game file or gear piece another mod also changes: {gear} gear pieces and {files} game files are contested. " +
+            (inGame ? $"In game in “{c?.Name}”, the mod with the higher priority wins each contested file (set priorities in Penumbra)."
+                    : "All installed mods and every option, enabled or not: a list of what could clash, not what does.") +
+            " Double-click a row to see it and its overlaps in the Mods tab.";
+    }
+
+    bool OverlapMatches(object o)
+    {
+        var ov = (Overlap)o;
+        var q = OverlapSearch.Text.Trim();
+        return q == "" || Has(ov.Mod.Name, q) || Has(ov.WithText, q) || Has(ov.OutfitsText, q) || q.Length >= 5 && ov.Paths.Any(x => Has(x, q));
+    }
+
+    void OverlapFilter_Changed(object sender, RoutedEventArgs e)
+    {
+        if (OverlapGrid.ItemsSource != null) CollectionViewSource.GetDefaultView(OverlapGrid.ItemsSource).Refresh();
+    }
+
+    void OverlapMode_Changed(object sender, RoutedEventArgs e) => RefreshOverlaps();
+
+    void OverlapGrid_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (OverlapGrid.SelectedItem is not Overlap ov || pen == null) return;
+        ModEnabledOnly.IsChecked = OverlapEnabledOnly.IsChecked;   // focus uses the same mode as this list
+        SetOverlapFocus(ov.Mod);   // focus mode bypasses the Mods-tab filters, so the row is always there to select
+        ModGrid.SelectedItem = ov.Mod;
+        ModGrid.ScrollIntoView(ov.Mod);
+        Tabs.SelectedIndex = 0;
     }
 
     // ---------------------------------------------------------------- designs
@@ -255,8 +335,11 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------------------------- gallery
-    void Gallery_Refresh(object? sender, RoutedEventArgs? e) =>
+    void Gallery_Refresh(object? sender, RoutedEventArgs? e)
+    {
+        if (GalleryList == null) return;   // Checked can fire while the window is still being built
         GalleryList.ItemsSource = designs.Where(d => GalleryShotsOnly.IsChecked != true || d.Thumbnail != null).ToList();
+    }
 
     void Gallery_DoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {

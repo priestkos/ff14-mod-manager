@@ -22,6 +22,15 @@ if (args.Contains("--live"))   // read-only smoke run against this machine's rea
     var cl = Analysis.Cleanup(live, liveDesigns);
     Console.WriteLine($"cleanup: {string.Join(", ", cl.GroupBy(r => r.Kind).Select(g => $"{g.Key}={g.Count()}"))}; duplicates={Analysis.Duplicates(live.Mods).Count}");
     foreach (var r in Analysis.FolderSizes(live.Mods).Take(4)) Console.WriteLine($"  {r.Item}: {r.Detail}");
+    sw0.Restart();
+    var ovAll = Analysis.Overlaps(live, null);
+    var tAll = sw0.ElapsedMilliseconds; sw0.Restart();
+    var cur = live.ById(live.Active.GetValueOrDefault("Current", ""))!;
+    var ovCur = Analysis.Overlaps(live, cur);
+    Console.WriteLine($"paths: {live.Mods.Sum(m => m.AllPaths.Count())} game paths, {live.Mods.Count(m => m.Outfits.Length > 0)} mods touch gear; " +
+        $"overlaps all installed: {ovAll.Count} mods ({tAll} ms); in '{cur.Name}' with selected options: {ovCur.Count} mods ({sw0.ElapsedMilliseconds} ms)");
+    foreach (var o in ovCur.Take(12))
+        Console.WriteLine($"  {o.Mod.Name} [prio {o.Priority}] ~ {string.Join(" | ", o.With.Select(w => w.Name).Take(3))}{(o.With.Count > 3 ? $" +{o.With.Count - 3}" : "")} :: {string.Join(", ", o.Outfits.Take(4))} · {o.Paths.Count} files");
     if (args.Contains("--dups")) foreach (var r in Analysis.Duplicates(live.Mods)) Console.WriteLine($"  [{r.Kind}] {r.Detail}");
     return 0;
 }
@@ -42,16 +51,34 @@ try
     // --- fixture ---------------------------------------------------------
     W(Path.Combine(cfg, "Penumbra", "config", "behavior.json"), "{ \"SomethingElse\": 1 }");
     W(Path.Combine(cfg, "Penumbra", "config", "advanced.json"), $"{{ \"ModDirectory\": \"{J(modsDir)}\", }}");   // trailing comma: lenient parse
-    W(Path.Combine(modsDir, "ModA", "meta.json"), "{\"Name\":\"Mod A\",\"Author\":\"Kos\",\"Version\":\"1.0\",\"ModTags\":[\"outfit\"]}");
+    // Penumbra 1.7 layout (FileVersion 4): files live in meta.json under DefaultData and Groups[].Options[].
+    W(Path.Combine(modsDir, "ModA", "meta.json"), """
+        {"FileVersion":4,"Name":"Mod A","Author":"Kos","Version":"1.0","ModTags":["outfit"],
+         "DefaultData":{"Files":{"chara/equipment/e6015/model/c0201e6015_top.mdl":"a\\top.mdl"}},
+         "Groups":[{"Type":"Single","Name":"Opt","DefaultSettings":0,"Options":[
+            {"Name":"zero","Files":{"chara/equipment/e0100/material/v0001/mt_c0201e0100_dwn_a.mtrl":"a\\x.mtrl"}},
+            {"Name":"one","Files":{"Chara\\Equipment\\e0200\\model\\c0201e0200_sho.mdl":"a\\sho.mdl"}}]}]}
+        """);   // option "one" is written with backslashes and capitals: paths compare normalised
+    // pre-1.7 layout: default_mod.json + group_*.json beside a plain meta.json
     W(Path.Combine(modsDir, "ModA (2)", "meta.json"), "{\"Name\":\"mod a \",\"Author\":\"kos\"}");
-    W(Path.Combine(modsDir, "Big", "meta.json"), "{\"Name\":\"Big, Comma \\\"Quoted\\\"\",\"Author\":\"Y\"}");
+    W(Path.Combine(modsDir, "ModA (2)", "default_mod.json"), """{"Files":{"chara/equipment/e0200/model/c0201e0200_sho.mdl":"sho.mdl"},"FileSwaps":{},"Manipulations":[]}""");
+    W(Path.Combine(modsDir, "ModA (2)", "group_001_extra.json"), """{"Name":"Extra","Type":"Multi","DefaultSettings":0,"Options":[{"Name":"o","Files":{"chara/accessory/a0012/model/c0201a0012_ear.mdl":"ear.mdl"}}]}""");
+    W(Path.Combine(modsDir, "Big", "meta.json"), """
+        {"FileVersion":4,"Name":"Big, Comma \"Quoted\"","Author":"Y",
+         "DefaultData":{"Files":{"chara/equipment/e6015/texture/v01_c0201e6015_top_n.tex":"b\\n.tex"},
+                        "FileSwaps":{"chara/equipment/e0100/material/v0001/mt_c0201e0100_dwn_a.mtrl":"chara/x.mtrl"}},
+         "Groups":[{"Type":"Multi","Name":"Extras","DefaultSettings":1,"Options":[
+            {"Name":"o0","Files":{"chara/equipment/e6015/model/c0201e6015_top.mdl":"b\top.mdl"}},
+            {"Name":"o1","Files":{"chara/equipment/e0200/model/c0201e0200_sho.mdl":"b\\sho.mdl"}}]},
+           {"Type":"Imc","Name":"Variant","Identifier":{},"DefaultEntry":{}}]}
+        """);
     Directory.CreateDirectory(Path.Combine(modsDir, "Big", "chara"));
     File.WriteAllBytes(Path.Combine(modsDir, "Big", "chara", "x.tex"), new byte[3 << 20]);
     W(Path.Combine(modsDir, "Broken", "meta.json"), "{ not json");
     W(Path.Combine(cfg, "Penumbra", "collections", Main + ".json"),
         $"{{\"Version\":2,\"Id\":\"{Main}\",\"Name\":\"Main\",\"Inheritance\":[],\"Settings\":{{\"ModA\":{{\"Settings\":{{\"Opt\":1}},\"Priority\":0,\"Enabled\":true}}}}}}");
     W(Path.Combine(cfg, "Penumbra", "collections", Child + ".json"),
-        $"{{\"Version\":2,\"Id\":\"{Child}\",\"Name\":\"Child\",\"Inheritance\":[\"{Main}\"],\"Settings\":{{\"Big\":{{\"Settings\":{{}},\"Priority\":3,\"Enabled\":true}},\"Gone\":{{\"Settings\":{{}},\"Priority\":0,\"Enabled\":true}}}}}}");
+        $"{{\"Version\":2,\"Id\":\"{Child}\",\"Name\":\"Child\",\"Inheritance\":[\"{Main}\"],\"Settings\":{{\"Big\":{{\"Settings\":{{\"Extras\":2}},\"Priority\":3,\"Enabled\":true}},\"Gone\":{{\"Settings\":{{}},\"Priority\":0,\"Enabled\":true}}}}}}");
     W(Path.Combine(cfg, "Penumbra", "collections", Child + ".json.bak"), "garbage");
     W(Path.Combine(cfg, "Penumbra", "active_collections.json"), $"{{\"Version\":2,\"Current\":\"{Child}\",\"Yourself\":\"{Main}\"}}");
     using (var db = new LiteDatabase(Path.Combine(cfg, "Penumbra", "mod_data.db")))
@@ -130,6 +157,35 @@ try
     Check(!similar.Any(r => new[] { "Bunny", "Idle", "Gym", "Hooked", "Summon", "Primal", "BGM", "Body+", "Bastet", "Chained" }.Any(r.Detail.Contains)),
         "F: sets (Front/Behind, AST/BLM, TEA/TOP, Body/Muscle), Basket/Bastet, one-word names and short names not matched");
     Check(!dups.Any(r => r.Kind.StartsWith("Similar name")), "F: pairs already reported as exact duplicates are not repeated");
+    // --- overlaps: same game file or same outfit ------------------------
+    Check(Analysis.Outfit("chara/equipment/e6015/model/c0201e6015_top.mdl") == "e6015 Body"
+        && Analysis.Outfit("chara/equipment/e0100/material/v0001/mt_c0201e0100_dwn_a.mtrl") == "e0100 Legs"
+        && Analysis.Outfit("chara/equipment/e6015/texture/v01_c0201e6015_top_n.tex") == "e6015 Body"
+        && Analysis.Outfit("chara/accessory/a0012/model/c0201a0012_ear.mdl") == "a0012 Earrings"
+        && Analysis.Outfit("chara/weapon/w3101/obj/body/b0018/model/w3101b0018.mdl") == "w3101-b0018 Weapon"
+        && Analysis.Outfit("chara/equipment/e0000/texture/v01_c0201e0000_top_d.tex") == "e0000 Body (smallclothes)"
+        && Analysis.Outfit("chara/equipment/e6015/texture/custom_glow.tex") == null
+        && Analysis.Outfit("chara/human/c0201/obj/body/b0001/texture/c0201b0001_base.tex") == null,
+        "outfit from game path: equipment slot, accessory, weapon; unknown slot and body files are not outfits");
+    Check(M("ModA").AllPaths.Count() == 3 && M("ModA").AllPaths.Contains("chara/equipment/e0200/model/c0201e0200_sho.mdl"),
+        "1.7 layout: default + every option, paths normalised (backslashes, case)");
+    Check(M("ModA (2)").AllPaths.Count() == 2 && M("Big").AllPaths.Count() == 4,
+        "old default_mod.json/group_*.json layout read; FileSwaps count as changed files; Imc group has no files");
+    var all = Analysis.Overlaps(p, null);
+    Overlap O(List<Overlap> list, string dir) => list.Single(o => o.Mod.Dir == dir);
+    Check(all.Count == 3 && O(all, "ModA").With.Select(m => m.Dir).Order().SequenceEqual(["Big", "ModA (2)"])
+        && O(all, "ModA (2)").With.Select(m => m.Dir).Order().SequenceEqual(["Big", "ModA"]),
+        "all installed: every mod sharing a file or outfit, any option");
+    Check(O(all, "ModA").Outfits.SequenceEqual(["e0100 Legs", "e0200 Feet", "e6015 Body"]) && O(all, "ModA").Paths.Count == 3,
+        $"ModA: shared outfits incl. different files of e6015 Body; 3 shared files (got {string.Join(", ", O(all, "ModA").Outfits)}; {O(all, "ModA").Paths.Count})");
+    var inChild = Analysis.Overlaps(p, child);
+    Check(inChild.Count == 2 && O(inChild, "ModA").With.Single().Dir == "Big",
+        "in a collection: enabled mods only (ModA inherited, ModA (2) not enabled)");
+    Check(O(inChild, "ModA").Outfits.SequenceEqual(["e0200 Feet", "e6015 Body"]) && O(inChild, "ModA").Paths.SequenceEqual(["chara/equipment/e0200/model/c0201e0200_sho.mdl"]),
+        "in a collection: only selected options (Single index 1, Multi bitmask 2), so unselected e0100 Legs is not a conflict");
+    Check(O(inChild, "Big").Priority == 3 && O(inChild, "ModA").Priority == 0, "priority shown, it decides which mod wins in game");
+    var (pairOutfits, pairFiles) = Analysis.Shared(M("ModA"), M("Big"));
+    Check(pairOutfits.SequenceEqual(["e0100 Legs", "e0200 Feet", "e6015 Body"]) && pairFiles == 3, "pairwise detail for the details pane");
     var cmp = Analysis.Compare(p, main, child);
     Check(cmp.Count == 1 && cmp[0].Kind == "Only in Child", "G: compare uses effective (inherited) state");
     var sizes = Analysis.FolderSizes(p.Mods);

@@ -7,6 +7,13 @@ namespace FF14ModManager.Core;
 
 public sealed record ReportRow(string Kind, string Item, string Detail);
 
+/// <summary>A mod that changes a game file or outfit another mod also changes.</summary>
+public sealed record Overlap(Mod Mod, List<Mod> With, List<string> Outfits, List<string> Paths, int? Priority)
+{
+    public string WithText => string.Join(", ", With.Select(m => m.Name));
+    public string OutfitsText => string.Join(", ", Outfits);
+}
+
 public static partial class Analysis
 {
     /// <summary>Designs that link a mod (by directory, falling back to name for designs saved without one).</summary>
@@ -172,6 +179,93 @@ public static partial class Analysis
     }
 
     static string Compact(string json) => Regex.Replace(json, @"\s+", "");
+
+    [GeneratedRegex(@"^chara/equipment/(e\d{4})/.*\1_(met|top|glv|dwn|sho)[_.]")]
+    private static partial Regex EquipPath();
+    [GeneratedRegex(@"^chara/accessory/(a\d{4})/.*\1_(ear|nek|wrs|rir|ril)[_.]")]
+    private static partial Regex AccessoryPath();
+    [GeneratedRegex(@"^chara/weapon/(w\d{4})/obj/body/(b\d{4})/")]
+    private static partial Regex WeaponPath();
+
+    static readonly Dictionary<string, string> Slots = new()
+    {
+        ["met"] = "Head", ["top"] = "Body", ["glv"] = "Hands", ["dwn"] = "Legs", ["sho"] = "Feet",
+        ["ear"] = "Earrings", ["nek"] = "Necklace", ["wrs"] = "Bracelets", ["rir"] = "Ring (R)", ["ril"] = "Ring (L)",
+    };
+
+    /// <summary>
+    /// The gear piece a game path belongs to: model set + slot, e.g. "e6015 Body", for every race and file type of it.
+    /// shortcut: model ids, not item names. Names live in the game's own data sheets (one model can be several
+    /// dyed/renamed items); upgrade by reading them in game through the Bridge (Penumbra GetChangedItems).
+    /// Null for anything that is not gear (bodies, faces, hair, animations, UI): those overlap by file only.
+    /// </summary>
+    public static string? Outfit(string gamePath)
+    {
+        // e0000 is no gear at all: the bare body body mods replace, so name it.
+        if (EquipPath().Match(gamePath) is { Success: true } e)
+            return $"{e.Groups[1].Value} {Slots[e.Groups[2].Value]}{(e.Groups[1].Value == "e0000" ? " (smallclothes)" : "")}";
+        if (AccessoryPath().Match(gamePath) is { Success: true } a) return $"{a.Groups[1].Value} {Slots[a.Groups[2].Value]}";
+        if (WeaponPath().Match(gamePath) is { Success: true } w) return $"{w.Groups[1].Value}-{w.Groups[2].Value} Weapon";
+        return null;
+    }
+
+    /// <summary>
+    /// Every mod that changes a game file or gear piece another mod also changes.
+    /// enabledIn = null: all installed mods, every option. A collection: only mods enabled in it (inheritance applied),
+    /// with only the options selected there, which is what the game actually loads; Priority then says who wins.
+    /// </summary>
+    public static List<Overlap> Overlaps(PenumbraData p, Collection? enabledIn)
+    {
+        var paths = new Dictionary<Mod, HashSet<string>>();
+        var priority = new Dictionary<Mod, int>();
+        foreach (var m in p.Mods)
+        {
+            if (enabledIn == null) { paths[m] = m.AllPaths.ToHashSet(); continue; }
+            if (p.Effective(enabledIn, m.Dir) is not { Enabled: true } s) continue;
+            paths[m] = m.ActivePaths(OptionSettings(s.OptionsJson)).ToHashSet();
+            priority[m] = s.Priority;
+        }
+        var outfits = paths.ToDictionary(kv => kv.Key, kv => kv.Value.Select(Outfit).OfType<string>().ToHashSet());
+        var byPath = new Dictionary<string, List<Mod>>();
+        var byOutfit = new Dictionary<string, List<Mod>>();
+        foreach (var (m, ps) in paths)
+        {
+            foreach (var x in ps) (byPath.TryGetValue(x, out var l) ? l : byPath[x] = []).Add(m);
+            foreach (var o in outfits[m]) (byOutfit.TryGetValue(o, out var l) ? l : byOutfit[o] = []).Add(m);
+        }
+        var result = new List<Overlap>();
+        foreach (var (m, ps) in paths)
+        {
+            var sharedPaths = ps.Where(x => byPath[x].Count > 1).Order(StringComparer.Ordinal).ToList();
+            var sharedOutfits = outfits[m].Where(o => byOutfit[o].Count > 1).Order(StringComparer.Ordinal).ToList();
+            var with = sharedPaths.SelectMany(x => byPath[x]).Concat(sharedOutfits.SelectMany(o => byOutfit[o])).Where(x => x != m).Distinct()
+                .OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            if (with.Count > 0) result.Add(new Overlap(m, with, sharedOutfits, sharedPaths, enabledIn == null ? null : priority[m]));
+        }
+        return result.OrderBy(o => o.Mod.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>What two mods share, across all their options.</summary>
+    public static (List<string> Outfits, int Files) Shared(Mod a, Mod b)
+    {
+        var pa = a.AllPaths.ToHashSet();
+        return (a.Outfits.Intersect(b.Outfits).Order(StringComparer.Ordinal).ToList(), b.AllPaths.Count(pa.Contains));
+    }
+
+    /// <summary>A collection's per-mod "Settings" object: option group name -> Single index / Multi bitmask.</summary>
+    static Dictionary<string, ulong> OptionSettings(string json)
+    {
+        var d = new Dictionary<string, ulong>();
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    if (p.Value.TryGetUInt64(out var v)) d[p.Name] = v;
+        }
+        catch (System.Text.Json.JsonException) { }   // unreadable settings: fall back to each group's defaults
+        return d;
+    }
 
     public static string Display(string folder) => folder == "" ? "(root)" : folder;
 

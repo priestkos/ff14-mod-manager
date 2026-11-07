@@ -21,9 +21,35 @@ public sealed class Mod
     public long Size { get; set; } = -1;              // -1 = not measured yet
     public string? MetaError { get; init; }
     public bool Enabled { get; set; }                 // in the collection picked in the UI; set by the UI
+    public string[] DefaultPaths { get; init; } = [];   // game paths the mod always changes (normalised: lower case, '/')
+    public ModGroup[] Groups { get; init; } = [];
+    public string[] Outfits { get; init; } = [];        // distinct Analysis.Outfit keys over AllPaths, for search
+    public IEnumerable<string> AllPaths => DefaultPaths.Concat(Groups.SelectMany(g => g.Options.SelectMany(o => o))).Distinct();
+
+    /// <summary>Game paths changed with these group settings (group name -> Penumbra setting value).</summary>
+    public IEnumerable<string> ActivePaths(IReadOnlyDictionary<string, ulong> settings)
+    {
+        var paths = new HashSet<string>(DefaultPaths);
+        foreach (var g in Groups)
+        {
+            var s = settings.TryGetValue(g.Name, out var v) ? v : g.DefaultSettings;
+            IEnumerable<int> chosen = g.Type switch
+            {
+                "Single" or "Combining" => s < (ulong)g.Options.Length ? [(int)s] : [],   // Combining: the bitmask IS the container index
+                "Multi" => Enumerable.Range(0, Math.Min(64, g.Options.Length)).Where(i => ((s >> i) & 1) == 1),
+                _ => [],
+            };
+            foreach (var i in chosen) paths.UnionWith(g.Options[i]);
+        }
+        return paths;
+    }
+
     public string AllTags => string.Join(", ", Tags.Concat(LocalTags).Distinct());
     public string SizeText => Size < 0 ? "…" : Size >= 1 << 30 ? $"{Size / (double)(1 << 30):0.0} GB" : $"{Size / (double)(1 << 20):0.0} MB";
 }
+
+/// <summary>An option group; Options[i] = game paths option i changes (Combining groups: container i).</summary>
+public sealed record ModGroup(string Name, string Type, ulong DefaultSettings, string[][] Options);
 
 public sealed record ModSetting(bool Enabled, int Priority, string OptionsJson);
 
@@ -125,8 +151,15 @@ public sealed class PenumbraData
             using var doc = JsonDocument.Parse(ReadShared(meta), Lenient);
             var r = doc.RootElement;
             string S(string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+            string[] defaults = [];
+            ModGroup[] groups = [];
+            string? filesError = null;
+            try { (defaults, groups) = ReadChangedFiles(r, path); }
+            catch (Exception e) when (e is IOException or JsonException or UnauthorizedAccessException) { filesError = $"option files unreadable: {e.Message}"; }
             return new Mod
             {
+                DefaultPaths = defaults, Groups = groups, MetaError = filesError,
+                Outfits = defaults.Concat(groups.SelectMany(g => g.Options.SelectMany(o => o))).Select(Analysis.Outfit).OfType<string>().Distinct().Order(StringComparer.Ordinal).ToArray(),
                 Dir = dir, FullPath = path, Name = S("Name") is { Length: > 0 } n ? n : dir,
                 Author = S("Author"), Version = S("Version"), Description = S("Description"), Website = S("Website"),
                 Tags = r.TryGetProperty("ModTags", out var t) && t.ValueKind == JsonValueKind.Array
@@ -138,6 +171,41 @@ public sealed class PenumbraData
             return new Mod { Dir = dir, FullPath = path, Name = dir, MetaError = $"meta.json unreadable: {e.Message}" };
         }
     }
+
+    // Penumbra 1.7+ (meta FileVersion 4) keeps DefaultData and Groups inside meta.json; earlier versions wrote
+    // default_mod.json + group_NNN_name.json beside it. Read whichever this mod has.
+    static (string[] Defaults, ModGroup[] Groups) ReadChangedFiles(JsonElement meta, string modPath)
+    {
+        if (meta.TryGetProperty("DefaultData", out var dd) | meta.TryGetProperty("Groups", out var gs))
+            return (Changed(dd), gs.ValueKind == JsonValueKind.Array ? gs.EnumerateArray().Select(ReadGroup).ToArray() : []);
+        var defaultFile = Path.Combine(modPath, "default_mod.json");
+        if (!File.Exists(defaultFile)) return ([], []);
+        using var def = JsonDocument.Parse(ReadShared(defaultFile), Lenient);
+        var groups = Directory.GetFiles(modPath, "group_*.json").Order(StringComparer.Ordinal).Select(f =>
+        {
+            using var g = JsonDocument.Parse(ReadShared(f), Lenient);
+            return ReadGroup(g.RootElement);
+        }).ToArray();
+        return (Changed(def.RootElement), groups);
+    }
+
+    static ModGroup ReadGroup(JsonElement g)
+    {
+        string S(string k) => g.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
+        var type = S("Type");
+        // Combining groups keep their files in Containers, one per combination of options.
+        var list = type == "Combining" && g.TryGetProperty("Containers", out var c) ? c : g.TryGetProperty("Options", out var o) ? o : default;
+        return new ModGroup(S("Name"), type,
+            g.TryGetProperty("DefaultSettings", out var d) && d.TryGetUInt64(out var dv) ? dv : 0,
+            list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().Select(Changed).ToArray() : []);
+    }
+
+    /// <summary>Game paths a container replaces (Files) or redirects (FileSwaps). Meta manipulations are not file paths.</summary>
+    static string[] Changed(JsonElement container) => container.ValueKind != JsonValueKind.Object ? [] :
+        new[] { "Files", "FileSwaps" }
+            .Where(k => container.TryGetProperty(k, out var f) && f.ValueKind == JsonValueKind.Object)
+            .SelectMany(k => container.GetProperty(k).EnumerateObject().Select(p => p.Name.Replace('\\', '/').ToLowerInvariant()))
+            .Distinct().ToArray();
 
     static void ApplyLocalData(List<Mod> mods, string dbFile, string cacheDir)
     {
