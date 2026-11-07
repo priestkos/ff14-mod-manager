@@ -39,23 +39,100 @@ public static partial class Analysis
         return rows;
     }
 
-    /// <summary>F: same name+author, or folder names that differ only by a "(2)"-style reimport suffix.</summary>
+    /// <summary>F: same name+author, folder names that differ only by a "(2)"-style reimport suffix, and similar names.</summary>
     public static List<ReportRow> Duplicates(List<Mod> mods)
     {
         var rows = new List<ReportRow>();
-        var seen = new HashSet<Mod>();
+        var group = new Dictionary<Mod, int>();   // mod -> exact group it was reported in, so the similar-name pass skips that pair
         foreach (var g in mods.GroupBy(m => (Norm(m.Name), Norm(m.Author))).Where(g => g.Count() > 1))
         {
-            foreach (var m in g) seen.Add(m);
+            foreach (var m in g) group[m] = rows.Count;
             rows.Add(new("Same name + author", g.First().Name, string.Join("  |  ", g.Select(m => m.Dir))));
         }
-        foreach (var g in mods.GroupBy(m => Norm(ReimportSuffix().Replace(m.Dir, ""))).Where(g => g.Count() > 1 && !g.All(seen.Contains)))
+        foreach (var g in mods.GroupBy(m => Norm(ReimportSuffix().Replace(m.Dir, ""))).Where(g => g.Count() > 1 && !g.All(group.ContainsKey)))
+        {
+            foreach (var m in g) group[m] = rows.Count;
             rows.Add(new("Reimported folder", g.First().Dir, string.Join("  |  ", g.Select(m => m.Dir))));
+        }
+        rows.AddRange(SimilarNames(mods, group));
         return rows;
     }
 
     [GeneratedRegex(@"\s*\(\d+\)\s*$")]
     private static partial Regex ReimportSuffix();
+
+    /// <summary>
+    /// Word-based, because mod sets differ by one short word ("(Front)"/"(Behind)", "AST"/"BLM") and a
+    /// letter-similarity score calls those duplicates. Two names are similar when, ignoring case, punctuation,
+    /// word order and version tags, they have the same words (a typo in a long word allowed), or one is the
+    /// other plus at most two words. When each has words the other lacks, they are a set, not a duplicate.
+    /// Groups chain: A~B and B~C are reported together.
+    /// </summary>
+    static List<ReportRow> SimilarNames(List<Mod> mods, Dictionary<Mod, int> exactGroup)
+    {
+        var words = mods.Select(m => Words(m.Name)).ToArray();
+        var parent = Enumerable.Range(0, mods.Count).ToArray();
+        int Root(int i) => parent[i] == i ? i : parent[i] = Root(parent[i]);
+        for (var a = 0; a < mods.Count; a++)
+            for (var b = a + 1; b < mods.Count; b++)
+            {
+                if (exactGroup.TryGetValue(mods[a], out var ga) && exactGroup.TryGetValue(mods[b], out var gb) && ga == gb) continue;
+                if (SimilarWords(words[a], words[b])) parent[Root(a)] = Root(b);
+            }
+        return Enumerable.Range(0, mods.Count).GroupBy(Root).Where(g => g.Count() > 1)
+            .Select(g => g.Select(i => mods[i]).ToList())
+            .Select(ms => new ReportRow("Similar name", ms[0].Name, string.Join("  |  ", ms.Select(m => m.Name))))
+            .ToList();
+    }
+
+    [GeneratedRegex(@"^(v\d+(\.\d+)*[a-z]?|\d+(\.\d+)+)$")]
+    private static partial Regex VersionTag();
+
+    // A list, not a set: "Body+ (Body)" vs "Body+ (Muscle)" differ only once "body" counts twice.
+    static List<string> Words(string name) =>
+        Regex.Split(StripAccents(name.ToLowerInvariant()), @"[^\p{L}\p{N}.]+").Select(w => w.Trim('.'))
+            .Where(w => w != "" && !VersionTag().IsMatch(w)).ToList();
+
+    static string StripAccents(string s) =>
+        new string(s.Normalize(System.Text.NormalizationForm.FormD)
+            .Where(c => System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) != System.Globalization.UnicodeCategory.NonSpacingMark).ToArray())
+            .Normalize(System.Text.NormalizationForm.FormC);
+
+    static bool SimilarWords(List<string> a, List<string> b)
+    {
+        var onlyA = new List<string>(a);
+        var onlyB = new List<string>();
+        foreach (var w in b) if (!onlyA.Remove(w)) onlyB.Add(w);
+        foreach (var w in onlyA.ToList())
+            if (onlyB.FirstOrDefault(v => Typo(w, v)) is { } match) { onlyA.Remove(w); onlyB.Remove(match); }
+        if (onlyA.Count > 0 && onlyB.Count > 0) return false;   // each has its own words: a set (Front/Behind)
+        if (onlyA.Count + onlyB.Count > 2) return false;
+        var shorter = onlyA.Count == 0 ? a : b;
+        // one word ("Chained", "Bastet") or under 6 letters ("Idle 2") is too little name to call a match
+        return shorter.Count >= 2 && shorter.Sum(w => w.Count(char.IsLetter)) >= 6;
+    }
+
+    // A dropped or doubled letter in a word of 5+ ("Outfit"/"Outfitt"); a changed letter only in 8+ ("Basket"/"Bastet" are different words).
+    static bool Typo(string a, string b)
+    {
+        if (Math.Min(a.Length, b.Length) < 5 || Math.Abs(a.Length - b.Length) > 2) return false;
+        var d = Levenshtein(a, b);
+        return a.Length != b.Length ? d == Math.Abs(a.Length - b.Length) && d == 1 : Math.Min(a.Length, b.Length) >= 8 && d <= (a.Length >= 9 ? 2 : 1);
+    }
+
+    static int Levenshtein(string a, string b)
+    {
+        var prev = Enumerable.Range(0, b.Length + 1).ToArray();
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var cur = new int[b.Length + 1];
+            cur[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+                cur[j] = Math.Min(Math.Min(cur[j - 1], prev[j]) + 1, prev[j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1));
+            prev = cur;
+        }
+        return prev[b.Length];
+    }
 
     static string Norm(string s) => s.Trim().ToLowerInvariant();
 

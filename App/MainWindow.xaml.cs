@@ -43,6 +43,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         shots = new Shots(Path.Combine(appData, "shots"));
+        ThemeBox.SelectedItem = ThemeBox.Items.Cast<ComboBoxItem>().First(i => (string)i.Content == App.SavedTheme);
         Loaded += async (_, _) => { await LoadAsync(); bridgeTimer.Tick += async (_, _) => await PollBridge(); bridgeTimer.Start(); await PollBridge(); };
     }
 
@@ -117,6 +118,13 @@ public partial class MainWindow : Window
     static bool Has(string s, string q) => s.Contains(q, StringComparison.OrdinalIgnoreCase);
 
     async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
+
+    void Theme_Changed(object sender, SelectionChangedEventArgs e)
+    {
+        if (ThemeBox.SelectedItem is not ComboBoxItem { Content: string theme } || theme == App.SavedTheme) return;
+        App.ApplyTheme(theme);
+        App.SavedTheme = theme;
+    }
 
     void Collection_Changed(object sender, SelectionChangedEventArgs e)
     {

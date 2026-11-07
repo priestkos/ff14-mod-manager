@@ -8,6 +8,35 @@ namespace FF14ModManager;
 
 public partial class App : Application
 {
+    static readonly string ThemeFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FF14ModManager", "theme.txt");
+
+    /// <summary>"System" (follow Windows), "Dark" or "Light"; anything unreadable falls back to System.</summary>
+    public static string SavedTheme
+    {
+        get
+        {
+            try { var t = File.ReadAllText(ThemeFile).Trim(); return t is "Dark" or "Light" ? t : "System"; }
+            catch (IOException) { return "System"; }
+        }
+        set { Directory.CreateDirectory(Path.GetDirectoryName(ThemeFile)!); File.WriteAllText(ThemeFile, value); }
+    }
+
+#pragma warning disable WPF0001   // ThemeMode (the built-in Fluent light/dark theme) is marked experimental in .NET 10
+    public static void ApplyTheme(string name) => Current.ThemeMode = name switch
+    {
+        "Dark" => ThemeMode.Dark,
+        "Light" => ThemeMode.Light,
+        _ => ThemeMode.System,
+    };
+#pragma warning restore WPF0001
+
+    // Before StartupUri creates the window, so its BasedOn styles resolve against the Fluent theme.
+    protected override void OnStartup(StartupEventArgs e)
+    {
+        ApplyTheme(SavedTheme);
+        base.OnStartup(e);
+    }
+
     // Show the error and keep running: every action is read-only or self-contained, so continuing is safe.
     void OnUnhandled(object sender, DispatcherUnhandledExceptionEventArgs e)
     {

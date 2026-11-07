@@ -22,6 +22,7 @@ if (args.Contains("--live"))   // read-only smoke run against this machine's rea
     var cl = Analysis.Cleanup(live, liveDesigns);
     Console.WriteLine($"cleanup: {string.Join(", ", cl.GroupBy(r => r.Kind).Select(g => $"{g.Key}={g.Count()}"))}; duplicates={Analysis.Duplicates(live.Mods).Count}");
     foreach (var r in Analysis.FolderSizes(live.Mods).Take(4)) Console.WriteLine($"  {r.Item}: {r.Detail}");
+    if (args.Contains("--dups")) foreach (var r in Analysis.Duplicates(live.Mods)) Console.WriteLine($"  [{r.Kind}] {r.Detail}");
     return 0;
 }
 
@@ -104,6 +105,31 @@ try
     Check(cleanup.Count(r => r.Kind == "Stale collection settings") == 1 && cleanup.Any(r => r.Item == "Child" && r.Detail.StartsWith("1 settings (1 enabled)")), "B: settings kept for deleted mods counted per collection");
     var dups = Analysis.Duplicates(p.Mods);
     Check(dups.Count == 1 && dups[0].Detail.Contains("ModA (2)"), "F: same name+author (case/space-insensitive), reported once");
+    Mod N(string name, string author = "x") => new() { Name = name, Dir = name, Author = author };
+    var similar = Analysis.Duplicates([
+        N("[Holo] Wanderer Outfit", "Holo"), N("Wanderer Outfitt (Holo)", "someone"),   // creator tag moved + typo
+        N("Outfit Wanderer"),                                                          // word order
+        N("Bunny Suit"), N("Bunny Ears"),                                              // control: shared word only
+        N("Idle"), N("Idle 2"),                                                        // control: too short to judge
+        N("Gym Day"),
+        N("Japanese Alley"), N("Japanese Alley V2"),                                   // version / extra word: same mod
+        // controls taken from a real mod list: parts of a set, not duplicates
+        N("[Amborella] Hooked (Behind)"), N("[Amborella] Hooked (Front)"),
+        N("[Eulogia] Summon Pack"), N("[Hydaelyn] Summon Pack"),
+        N("The Primal AST V1.3.2 FFXIV VFX Modpack"), N("The Primal BLM V1.0.3 FFXIV VFX Modpack"),
+        N("[IT] TEA BGM Revisited"), N("[IT] TOP BGM Revisited"),
+        N("[HS] Yet Another Body+ (Body)"), N("[HS] Yet Another Body+ (Muscle)"),     // repeated word must count twice
+        N("Basket 2.0"), N("Bastet"),                                                  // one-letter swap in a short word
+        N("Chained"), N("Chained To Perfection"),                                      // one-word name inside a longer one
+        N("Soiree Doree"), N("[Anno] Soirée Dorée")]);                                 // accents: same mod
+    var sim = similar.Where(r => r.Kind.StartsWith("Similar name")).ToList();
+    Check(sim.Any(r => r.Detail.Contains("Soirée")), "F: accents ignored");
+    Check(sim.Count == 3 && new[] { "[Holo] Wanderer Outfit", "Wanderer Outfitt (Holo)", "Outfit Wanderer" }.All(sim.SelectMany(r => new[] { r.Detail }).First(d => d.Contains("Wanderer")).Contains)
+        && sim.Any(r => r.Detail.Contains("Japanese Alley V2")),
+        $"F: similar names grouped across tags, typos, word order and versions ({string.Join(" / ", sim.Select(r => r.Detail))})");
+    Check(!similar.Any(r => new[] { "Bunny", "Idle", "Gym", "Hooked", "Summon", "Primal", "BGM", "Body+", "Bastet", "Chained" }.Any(r.Detail.Contains)),
+        "F: sets (Front/Behind, AST/BLM, TEA/TOP, Body/Muscle), Basket/Bastet, one-word names and short names not matched");
+    Check(!dups.Any(r => r.Kind.StartsWith("Similar name")), "F: pairs already reported as exact duplicates are not repeated");
     var cmp = Analysis.Compare(p, main, child);
     Check(cmp.Count == 1 && cmp[0].Kind == "Only in Child", "G: compare uses effective (inherited) state");
     var sizes = Analysis.FolderSizes(p.Mods);

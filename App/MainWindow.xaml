@@ -5,13 +5,13 @@
         Title="FF14 Mod Manager" Width="1360" Height="860" MinWidth="900" MinHeight="560">
     <Window.Resources>
         <local:ThumbConverter x:Key="Thumb" />
-        <Style TargetType="Button"><Setter Property="Padding" Value="10,4" /><Setter Property="Margin" Value="0,0,6,6" /></Style>
-        <Style TargetType="DataGrid">
+        <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}"><Setter Property="Padding" Value="10,4" /><Setter Property="Margin" Value="0,0,6,6" /></Style>
+        <Style TargetType="DataGrid" BasedOn="{StaticResource {x:Type DataGrid}}">
             <Setter Property="IsReadOnly" Value="True" /><Setter Property="AutoGenerateColumns" Value="False" />
             <Setter Property="SelectionMode" Value="Single" /><Setter Property="HeadersVisibility" Value="Column" />
-            <Setter Property="GridLinesVisibility" Value="Horizontal" /><Setter Property="HorizontalGridLinesBrush" Value="#E5E5E5" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" /><Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource DividerStrokeColorDefaultBrush}" />
         </Style>
-        <Style x:Key="Label" TargetType="TextBlock"><Setter Property="Foreground" Value="#666" /><Setter Property="Margin" Value="0,8,0,2" /></Style>
+        <Style x:Key="Label" TargetType="TextBlock"><Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" /><Setter Property="Margin" Value="0,8,0,2" /></Style>
     </Window.Resources>
 
     <DockPanel Margin="8">
@@ -21,10 +21,15 @@
             <TextBlock Text="Collection:" VerticalAlignment="Center" DockPanel.Dock="Left" Margin="0,0,4,0" />
             <ComboBox x:Name="CollectionBox" Width="200" DockPanel.Dock="Left" SelectionChanged="Collection_Changed"
                       AutomationProperties.Name="Penumbra collection" />
-            <TextBlock x:Name="BridgeText" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#666" />
+            <ComboBox x:Name="ThemeBox" DockPanel.Dock="Right" Width="100" Margin="10,0,0,0" SelectionChanged="Theme_Changed"
+                      AutomationProperties.Name="Theme" ToolTip="Theme: System follows the Windows light/dark setting">
+                <ComboBoxItem Content="System" /><ComboBoxItem Content="Dark" /><ComboBoxItem Content="Light" />
+            </ComboBox>
+            <TextBlock Text="Theme:" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,4,0" />
+            <TextBlock x:Name="BridgeText" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
             <TextBlock x:Name="SummaryText" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis" />
         </DockPanel>
-        <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="0,6,0,0" Foreground="#444" TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="0,6,0,0" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
 
         <TabControl x:Name="Tabs">
             <!-- MODS -->
@@ -42,8 +47,8 @@
                         </StackPanel>
                         <DataGrid x:Name="ModGrid" SelectionChanged="ModGrid_SelectionChanged">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="On" Binding="{Binding Enabled, Converter={x:Static local:MainWindow.Tick}}" Width="34" />
-                                <DataGridTextColumn Header="★" Binding="{Binding Favorite, Converter={x:Static local:MainWindow.Star}}" Width="28" />
+                                <DataGridTextColumn Header="On" Binding="{Binding Enabled, Converter={x:Static local:MainWindow.Tick}}" Width="48" />
+                                <DataGridTextColumn Header="★" Binding="{Binding Favorite, Converter={x:Static local:MainWindow.Star}}" Width="40" />
                                 <DataGridTextColumn Header="Folder" Binding="{Binding Folder}" Width="170" />
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
                                 <DataGridTextColumn Header="Author" Binding="{Binding Author}" Width="110" />
@@ -86,12 +91,12 @@
                         </StackPanel>
                         <DataGrid x:Name="DesignGrid" SelectionChanged="DesignGrid_SelectionChanged">
                             <DataGrid.Columns>
-                                <DataGridTextColumn Header="📷" Binding="{Binding Thumbnail, Converter={x:Static local:MainWindow.HasShot}}" Width="30" />
+                                <DataGridTextColumn Header="📷" Binding="{Binding Thumbnail, Converter={x:Static local:MainWindow.HasShot}}" Width="46" />
                                 <DataGridTextColumn Header="Folder" Binding="{Binding Folder}" Width="120" />
                                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
                                 <DataGridTextColumn Header="Tags" Binding="{Binding TagsText}" Width="*" />
                                 <DataGridTextColumn Header="Last edit" Binding="{Binding LastEdit, StringFormat=yyyy-MM-dd HH:mm}" Width="120" />
-                                <DataGridTextColumn Header="Mods" Binding="{Binding Mods.Count}" Width="50" />
+                                <DataGridTextColumn Header="Mods" Binding="{Binding Mods.Count}" Width="64" />
                             </DataGrid.Columns>
                         </DataGrid>
                     </DockPanel>
@@ -120,7 +125,7 @@
                 <DockPanel Margin="6">
                     <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,6">
                         <CheckBox x:Name="GalleryShotsOnly" Content="Only designs with a screenshot" IsChecked="True" Click="Gallery_Refresh" />
-                        <TextBlock Text="  Double-click a design to open it." Foreground="#666" />
+                        <TextBlock Text="  Double-click a design to open it." Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     </StackPanel>
                     <ListBox x:Name="GalleryList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="Gallery_DoubleClick"
                              VirtualizingPanel.IsVirtualizing="True" AutomationProperties.Name="Design gallery">
@@ -128,11 +133,11 @@
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Width="230" Margin="4">
-                                    <Border Height="150" Background="#F0F0F0">
+                                    <Border Height="150" Background="{DynamicResource ControlFillColorSecondaryBrush}">
                                         <Image Source="{Binding Thumbnail, Converter={StaticResource Thumb}, ConverterParameter=320}" Stretch="Uniform" />
                                     </Border>
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
-                                    <TextBlock Text="{Binding Folder}" Foreground="#777" />
+                                    <TextBlock Text="{Binding Folder}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
@@ -150,7 +155,7 @@
                             <Button Content="Capture in 3 s" Click="CaptureDelayed_Click" />
                             <Button Content="Open screenshots folder" Click="ShotsOpen_Click" />
                         </WrapPanel>
-                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#666" Margin="0,0,0,6"
+                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" Margin="0,0,0,6"
                                    Text="Hotkey from inside the game: Ctrl+Shift+F12. The game can be behind this window, but not minimised. New captures land in 'Unsorted'; attach one to the design or mod selected in the other tabs." />
                         <TextBlock x:Name="ShotInfo" DockPanel.Dock="Bottom" TextWrapping="Wrap" Margin="0,6,0,0" />
                         <Image x:Name="ShotPreview" Stretch="Uniform" />
@@ -166,7 +171,7 @@
                                 <DataTemplate>
                                     <StackPanel Margin="2">
                                         <Image Source="{Binding Converter={StaticResource Thumb}, ConverterParameter=260}" Width="260" />
-                                        <TextBlock Text="{Binding Converter={x:Static local:MainWindow.FileName}}" Foreground="#777" />
+                                        <TextBlock Text="{Binding Converter={x:Static local:MainWindow.FileName}}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                     </StackPanel>
                                 </DataTemplate>
                             </ListBox.ItemTemplate>
