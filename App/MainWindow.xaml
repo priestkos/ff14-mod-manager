@@ -1,0 +1,207 @@
+<Window x:Class="FF14ModManager.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:FF14ModManager"
+        Title="FF14 Mod Manager" Width="1360" Height="860" MinWidth="900" MinHeight="560">
+    <Window.Resources>
+        <local:ThumbConverter x:Key="Thumb" />
+        <Style TargetType="Button"><Setter Property="Padding" Value="10,4" /><Setter Property="Margin" Value="0,0,6,6" /></Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="IsReadOnly" Value="True" /><Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="SelectionMode" Value="Single" /><Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" /><Setter Property="HorizontalGridLinesBrush" Value="#E5E5E5" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock"><Setter Property="Foreground" Value="#666" /><Setter Property="Margin" Value="0,8,0,2" /></Style>
+    </Window.Resources>
+
+    <DockPanel Margin="8">
+        <!-- top bar -->
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8" LastChildFill="True">
+            <Button Content="Reload" Click="Reload_Click" DockPanel.Dock="Left" Margin="0,0,10,0" />
+            <TextBlock Text="Collection:" VerticalAlignment="Center" DockPanel.Dock="Left" Margin="0,0,4,0" />
+            <ComboBox x:Name="CollectionBox" Width="200" DockPanel.Dock="Left" SelectionChanged="Collection_Changed"
+                      AutomationProperties.Name="Penumbra collection" />
+            <TextBlock x:Name="BridgeText" DockPanel.Dock="Right" VerticalAlignment="Center" Foreground="#666" />
+            <TextBlock x:Name="SummaryText" VerticalAlignment="Center" Margin="12,0" TextTrimming="CharacterEllipsis" />
+        </DockPanel>
+        <TextBlock x:Name="StatusText" DockPanel.Dock="Bottom" Margin="0,6,0,0" Foreground="#444" TextTrimming="CharacterEllipsis" />
+
+        <TabControl x:Name="Tabs">
+            <!-- MODS -->
+            <TabItem Header="Mods">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="380" /></Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBox x:Name="ModSearch" Width="260" TextChanged="ModFilter_Changed" AutomationProperties.Name="Search mods" />
+                            <TextBlock Text="Folder:" VerticalAlignment="Center" Margin="12,0,4,0" />
+                            <ComboBox x:Name="ModFolder" Width="260" SelectionChanged="ModFilter_Changed" AutomationProperties.Name="Penumbra folder filter" />
+                            <CheckBox x:Name="ModEnabledOnly" Content="Enabled only" VerticalAlignment="Center" Margin="12,0" Click="ModFilter_Changed" />
+                            <CheckBox x:Name="ModFavOnly" Content="Favourites" VerticalAlignment="Center" Click="ModFilter_Changed" />
+                        </StackPanel>
+                        <DataGrid x:Name="ModGrid" SelectionChanged="ModGrid_SelectionChanged">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="On" Binding="{Binding Enabled, Converter={x:Static local:MainWindow.Tick}}" Width="34" />
+                                <DataGridTextColumn Header="★" Binding="{Binding Favorite, Converter={x:Static local:MainWindow.Star}}" Width="28" />
+                                <DataGridTextColumn Header="Folder" Binding="{Binding Folder}" Width="170" />
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                                <DataGridTextColumn Header="Author" Binding="{Binding Author}" Width="110" />
+                                <DataGridTextColumn Header="Version" Binding="{Binding Version}" Width="70" />
+                                <DataGridTextColumn Header="Tags" Binding="{Binding AllTags}" Width="*" />
+                                <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" SortMemberPath="Size" Width="75" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                    <ScrollViewer Grid.Column="1" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="ModDetails">
+                            <Image x:Name="ModShot" MaxHeight="260" Stretch="Uniform" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="ModTitle" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="ModInfo" TextWrapping="Wrap" />
+                            <TextBlock Text="Used by designs" Style="{StaticResource Label}" />
+                            <TextBlock x:Name="ModUsedBy" TextWrapping="Wrap" />
+                            <TextBlock Text="Description" Style="{StaticResource Label}" />
+                            <TextBlock x:Name="ModDesc" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button Content="Open folder" Click="ModOpen_Click" />
+                                <Button Content="Attach newest screenshot" Click="ModAttach_Click" />
+                                <Button x:Name="ModToggle" Content="Toggle in collection (in game)" Click="ModToggle_Click"
+                                        ToolTip="Needs the FF14 Mod Manager Bridge plugin running in game" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <!-- DESIGNS -->
+            <TabItem Header="Designs">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="380" /></Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,6">
+                            <TextBlock Text="Search:" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBox x:Name="DesignSearch" Width="260" TextChanged="DesignFilter_Changed" AutomationProperties.Name="Search designs" />
+                            <TextBlock Text="Folder:" VerticalAlignment="Center" Margin="12,0,4,0" />
+                            <ComboBox x:Name="DesignFolder" Width="200" SelectionChanged="DesignFilter_Changed" AutomationProperties.Name="Glamourer folder filter" />
+                        </StackPanel>
+                        <DataGrid x:Name="DesignGrid" SelectionChanged="DesignGrid_SelectionChanged">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="📷" Binding="{Binding Thumbnail, Converter={x:Static local:MainWindow.HasShot}}" Width="30" />
+                                <DataGridTextColumn Header="Folder" Binding="{Binding Folder}" Width="120" />
+                                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="2*" />
+                                <DataGridTextColumn Header="Tags" Binding="{Binding TagsText}" Width="*" />
+                                <DataGridTextColumn Header="Last edit" Binding="{Binding LastEdit, StringFormat=yyyy-MM-dd HH:mm}" Width="120" />
+                                <DataGridTextColumn Header="Mods" Binding="{Binding Mods.Count}" Width="50" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                    <ScrollViewer Grid.Column="1" Margin="10,0,0,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <Image x:Name="DesignShot" MaxHeight="300" Stretch="Uniform" HorizontalAlignment="Left" />
+                            <TextBlock x:Name="DesignTitle" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" />
+                            <TextBlock x:Name="DesignInfo" TextWrapping="Wrap" />
+                            <TextBlock Text="Linked Penumbra mods" Style="{StaticResource Label}" />
+                            <TextBlock x:Name="DesignMods" TextWrapping="Wrap" />
+                            <TextBlock Text="Description" Style="{StaticResource Label}" />
+                            <TextBlock x:Name="DesignDesc" TextWrapping="Wrap" />
+                            <WrapPanel Margin="0,10,0,0">
+                                <Button Content="Apply to my character (in game)" Click="DesignApply_Click"
+                                        ToolTip="Needs the FF14 Mod Manager Bridge plugin running in game" />
+                                <Button Content="Attach newest screenshot" Click="DesignAttach_Click" />
+                                <Button Content="Show design file" Click="DesignOpen_Click" />
+                            </WrapPanel>
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
+            <!-- GALLERY -->
+            <TabItem Header="Gallery">
+                <DockPanel Margin="6">
+                    <StackPanel Orientation="Horizontal" DockPanel.Dock="Top" Margin="0,0,0,6">
+                        <CheckBox x:Name="GalleryShotsOnly" Content="Only designs with a screenshot" IsChecked="True" Click="Gallery_Refresh" />
+                        <TextBlock Text="  Double-click a design to open it." Foreground="#666" />
+                    </StackPanel>
+                    <ListBox x:Name="GalleryList" ScrollViewer.HorizontalScrollBarVisibility="Disabled" MouseDoubleClick="Gallery_DoubleClick"
+                             VirtualizingPanel.IsVirtualizing="True" AutomationProperties.Name="Design gallery">
+                        <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Width="230" Margin="4">
+                                    <Border Height="150" Background="#F0F0F0">
+                                        <Image Source="{Binding Thumbnail, Converter={StaticResource Thumb}, ConverterParameter=320}" Stretch="Uniform" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding Folder}" Foreground="#777" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </DockPanel>
+            </TabItem>
+
+            <!-- SCREENSHOT -->
+            <TabItem Header="Screenshot">
+                <Grid Margin="6">
+                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="300" /></Grid.ColumnDefinitions>
+                    <DockPanel>
+                        <WrapPanel DockPanel.Dock="Top">
+                            <Button Content="Capture game window" Click="Capture_Click" FontWeight="SemiBold" />
+                            <Button Content="Capture in 3 s" Click="CaptureDelayed_Click" />
+                            <Button Content="Open screenshots folder" Click="ShotsOpen_Click" />
+                        </WrapPanel>
+                        <TextBlock DockPanel.Dock="Top" TextWrapping="Wrap" Foreground="#666" Margin="0,0,0,6"
+                                   Text="Hotkey from inside the game: Ctrl+Shift+F12. The game can be behind this window, but not minimised. New captures land in 'Unsorted'; attach one to the design or mod selected in the other tabs." />
+                        <TextBlock x:Name="ShotInfo" DockPanel.Dock="Bottom" TextWrapping="Wrap" Margin="0,6,0,0" />
+                        <Image x:Name="ShotPreview" Stretch="Uniform" />
+                    </DockPanel>
+                    <DockPanel Grid.Column="1" Margin="10,0,0,0">
+                        <TextBlock Text="Unsorted captures" DockPanel.Dock="Top" FontWeight="SemiBold" />
+                        <WrapPanel DockPanel.Dock="Bottom" Margin="0,6,0,0">
+                            <Button Content="→ selected design" Click="ShotToDesign_Click" />
+                            <Button Content="→ selected mod" Click="ShotToMod_Click" />
+                        </WrapPanel>
+                        <ListBox x:Name="UnsortedList" SelectionChanged="Unsorted_SelectionChanged" AutomationProperties.Name="Unsorted captures">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <StackPanel Margin="2">
+                                        <Image Source="{Binding Converter={StaticResource Thumb}, ConverterParameter=260}" Width="260" />
+                                        <TextBlock Text="{Binding Converter={x:Static local:MainWindow.FileName}}" Foreground="#777" />
+                                    </StackPanel>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Grid>
+            </TabItem>
+
+            <!-- TOOLS -->
+            <TabItem Header="Tools">
+                <DockPanel Margin="6">
+                    <WrapPanel DockPanel.Dock="Top">
+                        <Button Content="Cleanup report" Click="Cleanup_Click" ToolTip="Report only: nothing is deleted" />
+                        <Button Content="Duplicates" Click="Duplicates_Click" />
+                        <Button Content="Disk usage by folder" Click="Sizes_Click" />
+                        <TextBlock Text="Compare" VerticalAlignment="Center" Margin="10,0,4,6" />
+                        <ComboBox x:Name="CompareA" Width="150" Margin="0,0,4,6" AutomationProperties.Name="First collection" />
+                        <TextBlock Text="with" VerticalAlignment="Center" Margin="0,0,4,6" />
+                        <ComboBox x:Name="CompareB" Width="150" Margin="0,0,4,6" AutomationProperties.Name="Second collection" />
+                        <Button Content="Compare" Click="Compare_Click" Margin="0,0,16,6" />
+                        <Button Content="Export CSV…" Click="ExportCsv_Click" />
+                        <Button Content="Export HTML…" Click="ExportHtml_Click" />
+                        <Button Content="Back up configs" Click="Backup_Click" ToolTip="Zips the Penumbra and Glamourer config folders" />
+                        <Button Content="Open backups folder" Click="BackupsOpen_Click" />
+                    </WrapPanel>
+                    <TextBlock x:Name="ReportText" DockPanel.Dock="Top" Margin="0,0,0,6" TextWrapping="Wrap" />
+                    <DataGrid x:Name="ReportGrid">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="190" />
+                            <DataGridTextColumn Header="Item" Binding="{Binding Item}" Width="2*" />
+                            <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="3*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </DockPanel>
+            </TabItem>
+        </TabControl>
+    </DockPanel>
+</Window>

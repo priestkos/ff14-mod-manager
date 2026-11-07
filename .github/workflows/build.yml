@@ -1,0 +1,27 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Self-check
+        run: dotnet run --project Tests
+      - name: Publish app
+        run: >
+          dotnet publish App/FF14ModManager.csproj -c Release -r win-x64 --self-contained true
+          -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
+          -o artifacts/app
+      # The Bridge plugin is not built here: Dalamud.NET.Sdk needs a local Dalamud install for its reference assemblies.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FF14ModManager
+          path: artifacts/app/FF14ModManager.exe
+          if-no-files-found: error
