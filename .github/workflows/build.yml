@@ -19,7 +19,7 @@ jobs:
           dotnet publish App/FF14ModManager.csproj -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
           -o artifacts/app
-      # The Bridge plugin is not built here: Dalamud.NET.Sdk needs a local Dalamud install for its reference assemblies.
+      # The in-game Bridge plugin is built by its own repo's CI: priestkos/FF14ModManagerBridge.
       - uses: actions/upload-artifact@v4
         with:
           name: FF14ModManager

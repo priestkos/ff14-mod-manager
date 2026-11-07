@@ -11,6 +11,8 @@ namespace FF14ModManager.Core;
 /// Desktop app ⇄ in-game plugin protocol: one JSON line request, one JSON line reply, per connection.
 /// CurrentUserOnly on both ends: only this Windows user can connect, and the app only trusts a server this user owns.
 /// Shared by the app (client) and the Dalamud plugin (server); keep it free of WPF and Dalamud types.
+/// The same file lives in two repos: priestkos/ff14-mod-manager (App/Core/Bridge.cs) and
+/// priestkos/FF14ModManagerBridge (FF14ModManagerBridge/Core/Bridge.cs). Change both together.
 /// Commands: status | applyDesign {id} | setMod {collection, dir, enabled}
 /// </summary>
 public static class Bridge

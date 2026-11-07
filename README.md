@@ -44,11 +44,9 @@ dotnet publish App/FF14ModManager.csproj -c Release -r win-x64 --self-contained 
 
 It enables *Apply to my character*, *Enable/Disable in collection*, the "In game:" status at the top right, and the character info saved with each screenshot.
 
-1. `dotnet build Bridge/FF14ModManagerBridge.csproj -c Release`
-2. In the game: `/xlsettings` → Experimental → Dev Plugin Locations → add `<repo>\Bridge\bin\Release\FF14ModManagerBridge.dll` → Save.
-3. `/xlplugins` → Dev Tools → enable **FF14 Mod Manager Bridge**.
+It lives in its own repo, **[priestkos/FF14ModManagerBridge](https://github.com/priestkos/FF14ModManagerBridge)**, where CI installs the Dalamud distribution, builds it and uploads `latest.zip`. Install steps and the pipe protocol are in that README.
 
-The Bridge has no window. It answers on the named pipe `FF14ModManager.Bridge`, opened with `PipeOptions.CurrentUserOnly`, so only your Windows user can talk to it. It supports three commands: `status`, `applyDesign {id}` (Glamourer `ApplyDesign`, one-off, equipment + customisation) and `setMod {collection, dir, enabled}` (Penumbra `TrySetMod`, then a redraw of you). It uses Penumbra.Api 5.19.2 and Glamourer.Api 2.8.2, built against Dalamud API 15.
+The app talks to it over the named pipe `FF14ModManager.Bridge` (current Windows user only). The protocol file `App/Core/Bridge.cs` is duplicated in the plugin repo as `FF14ModManagerBridge/Core/Bridge.cs`: **change both together.**
 
 ## Tests
 
@@ -65,8 +63,7 @@ The fixture builds a fake `pluginConfigs` with a real LiteDB `mod_data.db`, coll
 App/            WPF app (net10.0-windows10.0.22621.0)
   Core/         readers + analysis, no WPF and no Dalamud: Penumbra.cs, Glamourer.cs, Analysis.cs, Shots.cs, Bridge.cs (pipe protocol)
   Capture.cs    Windows.Graphics.Capture of the game window
-Bridge/         Dalamud plugin, shares App/Core/Bridge.cs
 Tests/          console self-check, links App/Core/*.cs
 ```
 
-Dependencies: `LiteDB` 5.0.21 (MIT, app + tests) and `Penumbra.Api` / `Glamourer.Api` (MIT, Bridge only). `dotnet list package --vulnerable --include-transitive` reported nothing for all three projects on 2026-11-07.
+Dependencies: `LiteDB` 5.0.21 (MIT, app + tests). The plugin's `Penumbra.Api` / `Glamourer.Api` are in its own repo. `dotnet list package --vulnerable --include-transitive` reported nothing for any project on 2026-11-07.
