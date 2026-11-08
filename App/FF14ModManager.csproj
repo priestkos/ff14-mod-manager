@@ -19,6 +19,8 @@
   <ItemGroup>
     <!-- WPF drops System.IO from implicit usings (clash with Shapes.Path); nothing here uses Shapes. -->
     <Using Include="System.IO" />
+    <!-- ApplicationIcon is the exe's icon in Explorer; the window and taskbar read this copy (Window.Icon="/app.ico"). -->
+    <Resource Include="app.ico" />
   </ItemGroup>
 
   <ItemGroup>

@@ -269,6 +269,31 @@ public static partial class Analysis
 
     public static string Display(string folder) => folder == "" ? "(root)" : folder;
 
+    /// <summary>Mods-tab search: 0 = name matches, 1 = another field matches, 2 = only the description matches, null = no match.
+    /// The grid sorts by this, so name matches stay above description matches.</summary>
+    public static int? SearchRank(Mod m, string q)
+    {
+        if (q == "" || Has(m.Name, q)) return 0;
+        if (Has(m.Author, q) || Has(m.AllTags, q) || Has(m.Dir, q) || Has(m.Folder, q) || Has(m.Note, q)
+            || m.Outfits.Any(o => Has(o, q)) || q.Length >= 5 && m.AllPaths.Any(x => Has(x, q)))   // "e6015", "chara/human/c0201"
+            return 1;
+        return Has(m.Description, q) ? 2 : null;
+    }
+
+    static bool Has(string s, string q) => s.Contains(q, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Pseudo-tag for the tag filter: required = mods with no tags at all, excluded = mods with at least one.</summary>
+    public const string Untagged = "(no tags)";
+
+    /// <summary>True when the mod carries every tag in <paramref name="has"/> and none in <paramref name="lacks"/>
+    /// (author tags and local tags alike, any case).</summary>
+    public static bool TagsMatch(Mod m, IReadOnlyCollection<string> has, IReadOnlyCollection<string> lacks)
+    {
+        var tags = new HashSet<string>(m.Tags.Concat(m.LocalTags), StringComparer.OrdinalIgnoreCase);
+        if (tags.Count == 0) tags.Add(Untagged);
+        return has.All(tags.Contains) && !lacks.Any(tags.Contains);
+    }
+
     // D: inventory export. Columns match the earlier Penumbra Inventory CSV, plus state and size.
     public static string ToCsv(PenumbraData p, Collection? c)
     {

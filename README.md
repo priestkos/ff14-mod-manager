@@ -12,7 +12,7 @@ A Windows app that lists your Penumbra mods and Glamourer designs, finds the mod
 
 | Tab | |
 | --- | --- |
-| **Mods** | Every mod in your Penumbra mod directory with its Penumbra folder, ★ favourite, author, version, tags and size on disk. ✓ = enabled in the collection picked at the top (inheritance counts). Filters: search (also finds gear pieces and game paths), folder (a parent includes its subfolders), **Enabled only**, **Favourites**, **Overlapping only**. The details pane shows which collections enable the mod, which designs use it, and every mod it overlaps. **Show only mods overlapping this** narrows the list to them. |
+| **Mods** | Every mod in your Penumbra mod directory with its Penumbra folder, ★ favourite, author, version, tags and size on disk. ✓ = enabled in the collection picked at the top (inheritance counts). Filters: search (name, author, tags, folder, gear pieces, game paths and description; name matches are listed first, description-only matches last), **Tags** (click a tag once for ✓ must have, again for ✗ must not have; mod and local tags alike, plus *(no tags)*), folder (a parent includes its subfolders), **Enabled only**, **Favourites**, **Overlapping only**. The details pane shows which collections enable the mod, which designs use it, and every mod it overlaps. **Show only mods overlapping this** narrows the list to them. |
 | **Overlaps** | Every mod that changes a **game file** or a **gear piece** another mod also changes: who it overlaps, the shared gear, the number of shared files. Default is **in game**: only mods enabled in the selected collection, with only their selected options, plus the **Priority** that decides who wins. Untick it to check every installed mod and every option. Double-click a row to jump to the mod. |
 | **Designs** | Every Glamourer design with its folder, tags, last edit and linked mods (✗ = not installed). **Apply to my character** (needs the Bridge), attach a screenshot, show the design file. |
 | **Gallery** | Designs as a thumbnail grid of the screenshots you attached. |
@@ -67,7 +67,7 @@ The readers and analysis are WPF-free, so they run as a console self-check again
 
 ```
 dotnet run --project Tests
-# ALL PASS (47 checks)
+# ALL PASS (54 checks)
 dotnet run --project Tests -- --live   # read-only summary of this machine's real Penumbra/Glamourer data
 ```
 

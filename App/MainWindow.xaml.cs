@@ -23,6 +23,7 @@ public partial class MainWindow : Window
         public object ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
     }
     public static readonly IValueConverter Tick = new Fn(v => v is true ? "✓" : "");
+    public static readonly IValueConverter Not = new Fn(v => v is not true);
     public static readonly IValueConverter Star = new Fn(v => v is true ? "★" : "");
     public static readonly IValueConverter HasShot = new Fn(v => v is string ? "📷" : "");
     public static readonly IValueConverter FileName = new Fn(v => v is string s ? Path.GetFileNameWithoutExtension(s) : "");
@@ -86,6 +87,8 @@ public partial class MainWindow : Window
         CollectionViewSource.GetDefaultView(pen.Mods).Filter = ModMatches;
         ModFolder.ItemsSource = FolderChoices(pen.Mods.Select(m => m.Folder));
         ModFolder.SelectedIndex = 0;
+        LoadTagChoices(pen.Mods);
+        ModFilter_Changed(ModSearch, new RoutedEventArgs());   // a reload keeps the search text: re-apply its relevance order to the new list
         CollectionBox.SelectedItem = current;   // fires Collection_Changed → sets Enabled flags
 
         DesignGrid.ItemsSource = designs;
@@ -150,18 +153,83 @@ public partial class MainWindow : Window
     }
 
     // ---------------------------------------------------------------- mods
+    readonly Dictionary<Mod, int> searchRank = [];   // filled by ModMatches, read by the sort that follows it in the same Refresh
+
     bool ModMatches(object o)
     {
         var m = (Mod)o;
         if (overlapFocus != null)   // focus mode ignores the other filters: show the mod and everything it overlaps
             return m == overlapFocus || Overlaps(ModEnabledOnly.IsChecked == true).TryGetValue(overlapFocus, out var f) && f.With.Contains(m);
-        var q = ModSearch.Text.Trim();
-        return (q == "" || Has(m.Name, q) || Has(m.Author, q) || Has(m.AllTags, q) || Has(m.Dir, q) || Has(m.Folder, q) || Has(m.Note, q)
-                || m.Outfits.Any(o => Has(o, q)) || q.Length >= 5 && m.AllPaths.Any(x => Has(x, q)))   // "e6015", "chara/human/c0201"
-            && InFolder(m.Folder, ModFolder.SelectedItem)
+        if (Analysis.SearchRank(m, ModSearch.Text.Trim()) is not { } rank) return false;
+        searchRank[m] = rank;
+        return InFolder(m.Folder, ModFolder.SelectedItem)
+            && Analysis.TagsMatch(m, tagHas, tagLacks)
             && (ModEnabledOnly.IsChecked != true || m.Enabled)
             && (ModFavOnly.IsChecked != true || m.Favorite)
             && (ModOverlapOnly.IsChecked != true || Overlaps(ModEnabledOnly.IsChecked == true).ContainsKey(m));
+    }
+
+    // While searching, name matches sort first and description-only matches last; a column click re-sorts as usual.
+    sealed class ByRank(Dictionary<Mod, int> rank) : System.Collections.IComparer
+    {
+        public int Compare(object? a, object? b) =>
+            rank.GetValueOrDefault((Mod)a!).CompareTo(rank.GetValueOrDefault((Mod)b!)) is var c and not 0 ? c
+                : StringComparer.OrdinalIgnoreCase.Compare(((Mod)a!).Name, ((Mod)b!).Name);
+    }
+
+    // ---------------------------------------------------------------- tag filter
+    sealed class TagChoice(string name, int count)
+    {
+        public string Name => name;
+        public int State;   // 0 ignored, 1 must have, 2 must not have
+        public string Label => $"{State switch { 1 => "✓", 2 => "✗", _ => "   " }}  {name}  ({count})";
+    }
+
+    List<TagChoice> tagChoices = [];
+    readonly HashSet<string> tagHas = new(StringComparer.OrdinalIgnoreCase), tagLacks = new(StringComparer.OrdinalIgnoreCase);
+
+    void LoadTagChoices(List<Mod> mods)
+    {
+        var counts = mods.SelectMany(m => m.Tags.Concat(m.LocalTags).Distinct(StringComparer.OrdinalIgnoreCase))
+            .GroupBy(t => t, StringComparer.OrdinalIgnoreCase).ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+        tagChoices = [new TagChoice(Analysis.Untagged, mods.Count(m => m.Tags.Length + m.LocalTags.Length == 0)),
+            .. counts.OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase).Select(kv => new TagChoice(kv.Key, kv.Value))];
+        // keep the user's choices across a reload when the tag still exists
+        foreach (var c in tagChoices) c.State = tagHas.Contains(c.Name) ? 1 : tagLacks.Contains(c.Name) ? 2 : 0;
+        ApplyTagChoices();
+        TagSearch_Changed(null, null);
+    }
+
+    void ApplyTagChoices()
+    {
+        tagHas.Clear(); tagLacks.Clear();
+        foreach (var c in tagChoices.Where(c => c.State == 1)) tagHas.Add(c.Name);
+        foreach (var c in tagChoices.Where(c => c.State == 2)) tagLacks.Add(c.Name);
+        TagButton.Content = tagHas.Count + tagLacks.Count == 0 ? "Tags: any"
+            : "Tags: " + string.Join(" ", tagHas.Select(t => "✓" + t).Concat(tagLacks.Select(t => "✗" + t)));
+        if (TagButton.Content is string s && s.Length > 40) TagButton.Content = s[..39] + "…";
+        ModFilter_Changed(this, new RoutedEventArgs());
+    }
+
+    void TagChoice_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not TagChoice c) return;
+        c.State = (c.State + 1) % 3;
+        TagList.Items.Refresh();
+        ApplyTagChoices();
+    }
+
+    void TagClear_Click(object sender, RoutedEventArgs e)
+    {
+        foreach (var c in tagChoices) c.State = 0;
+        TagList.Items.Refresh();
+        ApplyTagChoices();
+    }
+
+    void TagSearch_Changed(object? sender, RoutedEventArgs? e)
+    {
+        var q = TagSearch.Text.Trim();
+        TagList.ItemsSource = q == "" ? tagChoices : tagChoices.Where(c => Has(c.Name, q)).ToList();
     }
 
     void ModFocus_Click(object sender, RoutedEventArgs e) => SetOverlapFocus(overlapFocus == null ? SelectedMod : null);
@@ -177,7 +245,12 @@ public partial class MainWindow : Window
 
     void ModFilter_Changed(object sender, RoutedEventArgs e)
     {
-        if (pen != null) CollectionViewSource.GetDefaultView(pen.Mods).Refresh();
+        if (pen == null) return;
+        var view = (ListCollectionView)CollectionViewSource.GetDefaultView(pen.Mods);
+        searchRank.Clear();
+        if (sender == ModSearch)   // typing re-sorts by relevance; clearing the box goes back to name order
+            view.CustomSort = ModSearch.Text.Trim() == "" || overlapFocus != null ? null : new ByRank(searchRank);
+        view.Refresh();
     }
 
     Mod? SelectedMod => ModGrid.SelectedItem as Mod;

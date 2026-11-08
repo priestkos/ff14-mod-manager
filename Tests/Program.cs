@@ -222,6 +222,28 @@ try
     Check(shots.Latest("design", d1.Id) == attached && shots.UnsortedShots().Count == 0, "shot attach moves into item folder");
     Check(shots.ReadInfo(attached)?["character"] == "Test Character", "sidecar moved with the shot");
 
+    // --- search ranking + tag filter ------------------------------------
+    var sName = new Mod { Name = "Latex Catsuit", Description = "shiny" };
+    var sAuthor = new Mod { Name = "Bodysuit", Author = "LatexLab" };
+    var sDesc = new Mod { Name = "Gloves", Description = "Pairs with the latex catsuit." };
+    var sNone = new Mod { Name = "Boots", Description = "leather" };
+    Check(Analysis.SearchRank(sName, "latex") == 0 && Analysis.SearchRank(sAuthor, "latex") == 1
+          && Analysis.SearchRank(sDesc, "latex") == 2 && Analysis.SearchRank(sNone, "latex") == null,
+        "search: name 0, other fields 1, description only 2, no match null");
+    Check(Analysis.SearchRank(sNone, "") == 0, "search: empty query matches everything");
+    var ranked = new[] { sDesc, sNone, sAuthor, sName }.Where(m => Analysis.SearchRank(m, "LATEX") != null)
+        .OrderBy(m => Analysis.SearchRank(m, "LATEX")).ToList();
+    Check(ranked.SequenceEqual([sName, sAuthor, sDesc]), "search: name matches sort above description matches, case-insensitive");
+    var tA = new Mod { Name = "a", Tags = ["Outfit"], LocalTags = ["mine"] };
+    var tB = new Mod { Name = "b", Tags = ["outfit", "NSFW"] };
+    var tC = new Mod { Name = "c" };
+    bool T(Mod m, string[] has, string[] lacks) => Analysis.TagsMatch(m, has, lacks);
+    Check(T(tA, [], []) && T(tC, [], []), "tags: no tag filter matches all");
+    Check(T(tA, ["outfit", "MINE"], []) && !T(tB, ["outfit", "mine"], []), "tags: every required tag present (mod + local tags, any case)");
+    Check(T(tA, ["outfit"], ["nsfw"]) && !T(tB, ["outfit"], ["nsfw"]) && T(tC, [], ["nsfw"]), "tags: an excluded tag must be absent");
+    Check(T(tC, [Analysis.Untagged], []) && !T(tA, [Analysis.Untagged], []) && !T(tC, [], [Analysis.Untagged]) && T(tB, [], [Analysis.Untagged]),
+        "tags: (no tags) as present = untagged only, as absent = tagged only");
+
     // --- bridge over a real named pipe ----------------------------------
     var pipe = "FF14ModManager.Test." + Guid.NewGuid().ToString("N")[..8];
     using var cts = new CancellationTokenSource();
