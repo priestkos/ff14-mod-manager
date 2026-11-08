@@ -1,27 +1,46 @@
-name: build
+name: Build
 
 on:
   push:
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
-      - name: Self-check
-        run: dotnet run --project Tests
-      - name: Publish app
+
+      - name: Publish FF14ModManager.exe
         run: >
           dotnet publish App/FF14ModManager.csproj -c Release -r win-x64 --self-contained true
           -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true
           -o artifacts/app
+
       # The in-game Bridge plugin is built by its own repo's CI: priestkos/FF14ModManagerBridge.
-      - uses: actions/upload-artifact@v4
+      - name: Upload the exe
+        uses: actions/upload-artifact@v7
         with:
           name: FF14ModManager
           path: artifacts/app/FF14ModManager.exe
           if-no-files-found: error
+
+  tests:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            10.0.x
+
+      - name: Run the self-check
+        run: dotnet run --project Tests/FF14ModManager.Tests.csproj -c Release

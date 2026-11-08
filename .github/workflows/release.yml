@@ -1,0 +1,153 @@
+name: Release
+
+# Same versioning as the Dalamud plugins: each push to main that changes the app gets the next four-part
+# version above the latest release tag (or the csproj version when that is higher). The release asset is the
+# single-file FF14ModManager.exe instead of a plugin latest.zip.
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - 'images/**'
+      - 'screenshots/**'
+      - '*.png'
+      - '*.mp4'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Prepare release version
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          function Get-FourPartVersion([string]$value) {
+            $normalized = ($value -replace '^v', '').Trim()
+            $parts = @($normalized -split '\.')
+            while ($parts.Count -lt 4) {
+              $parts += '0'
+            }
+            return [version]::new(
+              [int]$parts[0],
+              [int]$parts[1],
+              [int]$parts[2],
+              [int]$parts[3]
+            )
+          }
+
+          [xml]$project = Get-Content App/FF14ModManager.csproj
+          $csprojVersionText = @($project.Project.PropertyGroup.Version)[0]
+          if ([string]::IsNullOrWhiteSpace($csprojVersionText)) {
+            throw 'Version element missing from FF14ModManager.csproj'
+          }
+          $csprojVersion = Get-FourPartVersion $csprojVersionText
+
+          $isTagPush = $env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -like 'refs/tags/v*'
+          $isMainPush = $env:GITHUB_EVENT_NAME -eq 'push' -and $env:GITHUB_REF -eq 'refs/heads/main'
+
+          if ($isTagPush) {
+            $nextVersion = Get-FourPartVersion $env:GITHUB_REF_NAME
+          } elseif ($isMainPush) {
+            $highestRelease = $null
+            $tagNames = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate -q '.[].tag_name' 2>$null
+            if ($tagNames) {
+              foreach ($tagName in ($tagNames -split "`n")) {
+                $tagName = $tagName.Trim()
+                if ([string]::IsNullOrWhiteSpace($tagName)) { continue }
+                if ($tagName -notmatch '^v\d') { continue }
+                $candidate = Get-FourPartVersion $tagName
+                if (-not $highestRelease -or $candidate -gt $highestRelease) {
+                  $highestRelease = $candidate
+                }
+              }
+            }
+            if (-not $highestRelease -or $csprojVersion -gt $highestRelease) {
+              $nextVersion = $csprojVersion
+            } else {
+              $nextVersion = [version]::new(
+                $highestRelease.Major,
+                $highestRelease.Minor,
+                $highestRelease.Build,
+                $highestRelease.Revision + 1
+              )
+            }
+
+            $releasesJson = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate 2>$null
+            if ($releasesJson) {
+              foreach ($release in @($releasesJson | ConvertFrom-Json)) {
+                if ([string]$release.target_commitish -eq $env:GITHUB_SHA) {
+                  Write-Host "Commit $env:GITHUB_SHA already has release $($release.tag_name); skipping."
+                  echo "SKIP_RELEASE=true" >> $env:GITHUB_ENV
+                  exit 0
+                }
+              }
+            }
+          } else {
+            $nextVersion = $csprojVersion
+          }
+
+          $nextVersionText = "$($nextVersion.Major).$($nextVersion.Minor).$($nextVersion.Build).$($nextVersion.Revision)"
+          gh release view "v$nextVersionText" 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Release v$nextVersionText already exists; skipping."
+            echo "SKIP_RELEASE=true" >> $env:GITHUB_ENV
+            exit 0
+          }
+          $global:LASTEXITCODE = 0
+
+          Write-Host "Release version: $nextVersionText"
+          echo "RELEASE_VERSION=$nextVersionText" >> $env:GITHUB_ENV
+          exit 0
+
+      - name: Run the self-check
+        if: env.SKIP_RELEASE != 'true'
+        run: dotnet run --project Tests/FF14ModManager.Tests.csproj -c Release
+
+      - name: Publish FF14ModManager.exe
+        if: env.SKIP_RELEASE != 'true'
+        shell: pwsh
+        run: |
+          dotnet publish App/FF14ModManager.csproj -c Release -r win-x64 --self-contained true `
+            -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true `
+            "-p:Version=$($env:RELEASE_VERSION)" "-p:AssemblyVersion=$($env:RELEASE_VERSION)" "-p:FileVersion=$($env:RELEASE_VERSION)" `
+            -o artifacts/app
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit 0
+
+      - name: Create GitHub Release
+        if: env.SKIP_RELEASE != 'true'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $exe = 'artifacts/app/FF14ModManager.exe'
+          if (-not (Test-Path $exe)) { throw 'FF14ModManager.exe not found' }
+          $fileVersion = (Get-Item $exe).VersionInfo.FileVersion
+          if ($fileVersion -ne $env:RELEASE_VERSION) {
+            throw "Exe FileVersion '$fileVersion' does not match release version '$($env:RELEASE_VERSION)'"
+          }
+          $tag = "v$($env:RELEASE_VERSION)"
+          gh release create $tag $exe --target $env:GITHUB_SHA --title $tag --generate-notes
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          exit 0
