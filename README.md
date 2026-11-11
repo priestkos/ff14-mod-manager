@@ -37,10 +37,10 @@ The app **never writes to Penumbra or Glamourer files**. Penumbra rewrites its c
 
 ## Settings
 
-- **Theme** (top right): System follows Windows light/dark; Dark and Light force one. Remembered in `%LOCALAPPDATA%\FF14ModManager\theme.txt`.
+- **Theme** (top right): System follows Windows light/dark; Dark and Light force one. Remembered in `theme.txt` in the data folder.
 - **Collection** (top left): the collection the ✓ column, **Enabled only** and the in-game overlaps use. Starts at Penumbra's *Current* collection.
 
-Your data stays in `%LOCALAPPDATA%\FF14ModManager\`: `shots\{unsorted, design\<id>, mod\<dir>}`, `backups\configs-<timestamp>.zip`, and the `mod_data.db` copy in `cache\`.
+The app is portable: your data stays in `FF14ModManager-data\` next to the exe: `theme.txt`, `shots\{unsorted, design\<id>, mod\<dir>}`, `backups\configs-<timestamp>.zip`, and the `mod_data.db` copy in `cache\`. Move the exe and that folder together. If the exe's folder is not writable (e.g. Program Files), the app uses `%LOCALAPPDATA%\FF14ModManager\` instead. Versions up to 1.0.0.1 always used `%LOCALAPPDATA%\FF14ModManager\`; move its contents into `FF14ModManager-data\` to keep your screenshots.
 
 ## Build
 

@@ -8,7 +8,28 @@ namespace FF14ModManager;
 
 public partial class App : Application
 {
-    static readonly string ThemeFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FF14ModManager", "theme.txt");
+    /// <summary>Theme, screenshots, backups and cache: beside the exe, so the app is portable.
+    /// Falls back to %LOCALAPPDATA%\FF14ModManager only when the exe's folder is not writable (e.g. Program Files).</summary>
+    public static readonly string DataDir = PickDataDir();
+
+    static string PickDataDir()
+    {
+        var portable = Path.Combine(AppContext.BaseDirectory, "FF14ModManager-data");   // BaseDirectory = the exe's folder, also for single-file
+        try
+        {
+            Directory.CreateDirectory(portable);
+            var probe = Path.Combine(portable, ".write-test");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+            return portable;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FF14ModManager");
+        }
+    }
+
+    static readonly string ThemeFile = Path.Combine(DataDir, "theme.txt");
 
     /// <summary>"System" (follow Windows), "Dark" or "Light"; anything unreadable falls back to System.</summary>
     public static string SavedTheme

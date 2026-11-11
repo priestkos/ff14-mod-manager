@@ -32,7 +32,7 @@ public partial class MainWindow : Window
     static readonly ThumbConverter Thumbs = new();
 
     readonly string pluginConfigs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "XIVLauncher", "pluginConfigs");
-    readonly string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "FF14ModManager");
+    readonly string appData = App.DataDir;
     readonly Shots shots;
     readonly DispatcherTimer bridgeTimer = new() { Interval = TimeSpan.FromSeconds(5) };
     PenumbraData? pen;
