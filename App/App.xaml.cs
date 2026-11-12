@@ -78,7 +78,9 @@ public sealed class ThumbConverter : IValueConverter
         img.CreateOptions = BitmapCreateOptions.IgnoreImageCache;
         img.DecodePixelWidth = p is string w ? int.Parse(w, CultureInfo.InvariantCulture) : 320;
         img.UriSource = new Uri(path);
-        img.EndInit();
+        // A corrupt or half-written PNG throws from EndInit; WPF does not catch converter exceptions, so show no image instead.
+        try { img.EndInit(); }
+        catch (Exception) { return null; }
         img.Freeze();
         return img;
     }
