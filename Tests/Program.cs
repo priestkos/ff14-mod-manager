@@ -1,5 +1,5 @@
 // Self-check for the WPF-free core. Builds a fake pluginConfigs + mod directory, never touches the live game files.
-// Run: dotnet run --project Tests   (exit code = number of failed checks)
+// Run: dotnet run --project Tests   (exit code = number of failed checks, capped at 255)
 using System.IO.Compression;
 using System.IO.Pipes;
 using System.Security.AccessControl;
@@ -210,7 +210,8 @@ try
     using (new FileStream(held, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
     {
         var (files, skipped) = Analysis.Backup(cfg, zipPath);
-        Check(files >= 8 && skipped.Count == 0, $"H: backup zipped {files} files, skipped {skipped.Count}");
+        var expected = Directory.EnumerateFiles(cfg, "*", SearchOption.AllDirectories).Count();   // cfg holds only Penumbra + Glamourer
+        Check(files == expected && skipped.Count == 0, $"H: backup zipped {files} of {expected} files, skipped {skipped.Count}");
     }
     // a file this user may not read (ACL deny) is skipped and listed, not fatal
     if (OperatingSystem.IsWindows())
@@ -253,6 +254,17 @@ try
         Check(GlamourerData.Load(cfg).Count == 2, $"sort_order.json {bad} ignored, designs still load");
     }
     File.Delete(sortOrder);
+
+    // Penumbra still has mod_data.db open and its newest writes sit in mod_data-log.db (no checkpoint yet)
+    var liveDb = Path.Combine(cfg, "Penumbra", "mod_data.db");
+    using (var open = new LiteDatabase($"Filename={liveDb}"))
+    {
+        open.CheckpointSize = 0;   // never fold the log into the data file while open
+        open.GetCollection("LocalModData").Insert(new BsonDocument { ["_id"] = "ModA (2)", ["Folder"] = "FromLog" });
+        var logged = PenumbraData.Load(cfg, Path.Combine(root, "cache4"));
+        Check(File.Exists(Path.Combine(cfg, "Penumbra", "mod_data-log.db")) && logged.Mods.Single(m => m.Dir == "ModA (2)").Folder == "FromLog",
+            $"uncommitted pages in mod_data-log.db are read ({logged.LocalDataError})");
+    }
 
     // --- screenshots -----------------------------------------------------
     var shots = new Shots(Path.Combine(root, "shots"));
@@ -341,8 +353,8 @@ catch (Exception e)
 }
 finally
 {
-    try { Directory.Delete(root, true); } catch (IOException) { }
+    try { Directory.Delete(root, true); } catch (Exception e) when (e is IOException or UnauthorizedAccessException) { }
 }
 
 Console.WriteLine(failed == 0 ? "ALL PASS" : $"{failed} FAILED");
-return failed;
+return Math.Min(failed, 255);   // exit codes wrap at 256, so 256 failures must not read as success
