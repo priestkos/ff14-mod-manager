@@ -1,6 +1,7 @@
 // Self-check for the WPF-free core. Builds a fake pluginConfigs + mod directory, never touches the live game files.
 // Run: dotnet run --project Tests   (exit code = number of failed checks)
 using System.IO.Compression;
+using System.IO.Pipes;
 using System.Text.Json.Nodes;
 using FF14ModManager.Core;
 using LiteDB;
@@ -256,6 +257,20 @@ try
     Check((string?)r1?["echo"] == "status", "bridge round trip");
     Check(r2?["ok"]?.GetValue<bool>() == false && ((string?)r2?["error"])!.Contains("kaboom"), "handler exception becomes ok:false");
     Check((string?)r3?["echo"] == "again", "server keeps serving after an error");
+    // A server from another build (version skew) answering with a non-object or broken JSON line.
+    async Task<JsonObject?> AskRaw(string reply)
+    {
+        var name = "FF14ModManager.Test." + Guid.NewGuid().ToString("N")[..8];
+        await using var srv = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+        var ask = Bridge.Ask(new JsonObject { ["cmd"] = "status" }, pipeName: name);
+        await srv.WaitForConnectionAsync();
+        using var rd = new StreamReader(srv, leaveOpen: true);
+        await rd.ReadLineAsync();
+        await using var wr = new StreamWriter(srv, leaveOpen: true) { AutoFlush = true };
+        await wr.WriteLineAsync(reply);
+        return await ask;
+    }
+    Check(await AskRaw("[1]") == null && await AskRaw("{bad") == null, "bridge: non-object or malformed reply = null, not an exception");
     cts.Cancel();
     await server.WaitAsync(TimeSpan.FromSeconds(5));
     var sw = System.Diagnostics.Stopwatch.StartNew();

@@ -62,7 +62,9 @@ public static class Bridge
             var line = await reader.ReadLineAsync(cts.Token);
             return line is null ? null : JsonNode.Parse(line)?.AsObject();
         }
-        catch (Exception e) when (e is TimeoutException or OperationCanceledException or IOException or UnauthorizedAccessException)
+        // JsonException / InvalidOperationException: a reply that is not one JSON object (bridge from another build).
+        catch (Exception e) when (e is TimeoutException or OperationCanceledException or IOException or UnauthorizedAccessException
+                                      or System.Text.Json.JsonException or InvalidOperationException)
         {
             return null;
         }
