@@ -18,6 +18,7 @@ namespace FF14ModManager.Core;
 public static class Bridge
 {
     public const string PipeName = "FF14ModManager.Bridge";
+    const int RequestTimeoutMs = 1000;   // Ask writes its line right after connecting; under Ask's 2 s connect wait
 
     public static JsonObject Error(string message) => new() { ["ok"] = false, ["error"] = message };
 
@@ -33,13 +34,16 @@ public static class Bridge
                 await pipe.WaitForConnectionAsync(ct);
                 using var reader = new StreamReader(pipe, leaveOpen: true);
                 await using var writer = new StreamWriter(pipe, leaveOpen: true) { AutoFlush = true };
-                var line = await reader.ReadLineAsync(ct);
+                // One server instance: a client that connects and never writes would otherwise block everyone until unload.
+                using var readTimeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                readTimeout.CancelAfter(RequestTimeoutMs);
+                var line = await reader.ReadLineAsync(readTimeout.Token);
                 JsonObject reply;
-                try { reply = line is null ? Error("empty request") : await handle(JsonNode.Parse(line)?.AsObject() ?? Error("not an object")); }
+                try { reply = line is null ? Error("empty request") : JsonNode.Parse(line) is JsonObject req ? await handle(req) : Error("not an object"); }
                 catch (Exception e) { reply = Error(e.Message); }
                 await writer.WriteLineAsync(reply.ToJsonString().AsMemory(), ct);
             }
-            catch (OperationCanceledException) { break; }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested) { break; }
             catch (Exception e) { onError?.Invoke(e); await Task.Delay(250, CancellationToken.None); }   // e.g. client hung up early
         }
     }
