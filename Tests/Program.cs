@@ -2,6 +2,8 @@
 // Run: dotnet run --project Tests   (exit code = number of failed checks)
 using System.IO.Compression;
 using System.IO.Pipes;
+using System.Security.AccessControl;
+using System.Security.Principal;
 using System.Text.Json.Nodes;
 using FF14ModManager.Core;
 using LiteDB;
@@ -203,6 +205,18 @@ try
     {
         var (files, skipped) = Analysis.Backup(cfg, zipPath);
         Check(files >= 8 && skipped.Count == 0, $"H: backup zipped {files} files, skipped {skipped.Count}");
+    }
+    // a file this user may not read (ACL deny) is skipped and listed, not fatal
+    if (OperatingSystem.IsWindows())
+    {
+        var denied = Path.Combine(cfg, "Glamourer", "denied.txt");
+        W(denied, "x");
+        var acl = new FileSecurity();
+        acl.AddAccessRule(new FileSystemAccessRule(WindowsIdentity.GetCurrent().User!, FileSystemRights.ReadData, AccessControlType.Deny));
+        new FileInfo(denied).SetAccessControl(acl);
+        var (_, deniedSkipped) = Analysis.Backup(cfg, Path.Combine(root, "backup-denied.zip"));
+        File.Delete(denied);
+        Check(deniedSkipped.Count == 1 && deniedSkipped[0].Contains("denied.txt"), "H: unreadable (access denied) file skipped, backup completes");
     }
     using (var z = ZipFile.OpenRead(zipPath))
         Check(z.Entries.Any(e => e.FullName == $"Penumbra/collections/{Main}.json") && z.Entries.Any(e => e.FullName == "Glamourer/designs/d1.json"), "H: zip paths relative to pluginConfigs");

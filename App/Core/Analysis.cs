@@ -341,7 +341,7 @@ public static partial class Analysis
                     src.CopyTo(dst);
                     count++;
                 }
-                catch (IOException e) { skipped.Add($"{f}: {e.Message}"); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped.Add($"{f}: {e.Message}"); }
             }
         }
         return (count, skipped);

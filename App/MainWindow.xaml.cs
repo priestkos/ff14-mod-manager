@@ -620,8 +620,15 @@ public partial class MainWindow : Window
     {
         var zip = Path.Combine(appData, "backups", $"configs-{DateTime.Now:yyyyMMdd-HHmmss}.zip");
         StatusText.Text = "Backing up…";
-        var (files, skipped) = await Task.Run(() => Analysis.Backup(pluginConfigs, zip));
-        StatusText.Text = $"Backed up {files} files → {zip}" + (skipped.Count > 0 ? $" · {skipped.Count} skipped (in use): {skipped[0]}" : "");
+        try
+        {
+            var (files, skipped) = await Task.Run(() => Analysis.Backup(pluginConfigs, zip));
+            StatusText.Text = $"Backed up {files} files → {zip}" + (skipped.Count > 0 ? $" · {skipped.Count} skipped (in use): {skipped[0]}" : "");
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)   // e.g. same-second zip name already exists
+        {
+            StatusText.Text = $"Backup failed: {ex.Message}";
+        }
     }
 
     void BackupsOpen_Click(object sender, RoutedEventArgs e)
