@@ -475,14 +475,14 @@ public partial class MainWindow : Window
 
     void ShotToDesign_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedDesign is { } d) AttachShot(NewestUnsorted(), "design", d.Id, d.Name);
-        else StatusText.Text = "Select a design in the Designs tab first.";
+        if (SelectedDesign is null) StatusText.Text = "Select a design in the Designs tab first.";
+        else DesignAttach_Click(sender, e);
     }
 
     void ShotToMod_Click(object sender, RoutedEventArgs e)
     {
-        if (SelectedMod is { } m) AttachShot(NewestUnsorted(), "mod", m.Dir, m.Name);
-        else StatusText.Text = "Select a mod in the Mods tab first.";
+        if (SelectedMod is null) StatusText.Text = "Select a mod in the Mods tab first.";
+        else ModAttach_Click(sender, e);
     }
 
     void AttachShot(string? png, string kind, string key, string name)
