@@ -214,6 +214,26 @@ try
         Check(locked.Mods.Count == 4 && locked.LocalDataError != null, "locked mod_data.db degrades, does not fail");
     }
 
+    // active_collections.json caught mid-write by Penumbra, or not an object: mods still load, no active roles
+    var activeFile = Path.Combine(cfg, "Penumbra", "active_collections.json");
+    var activeText = File.ReadAllText(activeFile);
+    foreach (var bad in new[] { "{\"Current\":", "[1]" })
+    {
+        File.WriteAllText(activeFile, bad);
+        var half = PenumbraData.Load(cfg, Path.Combine(root, "cache3"));
+        Check(half.Mods.Count == 4 && half.Active.Count == 0, $"active_collections.json {bad} degrades, does not fail");
+    }
+    File.WriteAllText(activeFile, activeText);
+
+    // legacy sort_order.json with a non-string value or a non-object Data: designs still load
+    var sortOrder = Path.Combine(cfg, "Glamourer", "sort_order.json");
+    foreach (var bad in new[] { "{\"Data\":{\"x\":1}}", "{\"Data\":[1]}" })
+    {
+        File.WriteAllText(sortOrder, bad);
+        Check(GlamourerData.Load(cfg).Count == 2, $"sort_order.json {bad} ignored, designs still load");
+    }
+    File.Delete(sortOrder);
+
     // --- screenshots -----------------------------------------------------
     var shots = new Shots(Path.Combine(root, "shots"));
     var png = shots.NewPath();

@@ -85,9 +85,10 @@ public static class GlamourerData
         {
             using var doc = JsonDocument.Parse(PenumbraData.ReadShared(f), Lenient);
             if (doc.RootElement.TryGetProperty("Data", out var data))
-                foreach (var p in data.EnumerateObject()) map[p.Name] = p.Value.GetString() ?? "";
+                foreach (var p in data.EnumerateObject())
+                    if (p.Value.ValueKind == JsonValueKind.String) map[p.Name] = p.Value.GetString()!;
         }
-        catch (JsonException) { }
+        catch (Exception e) when (e is JsonException or InvalidOperationException or IOException) { }   // legacy folders are optional
         return map;
     }
 }

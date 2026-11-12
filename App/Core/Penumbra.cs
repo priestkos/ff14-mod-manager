@@ -110,9 +110,16 @@ public sealed class PenumbraData
         var activeFile = Path.Combine(root, "active_collections.json");
         if (File.Exists(activeFile))
         {
-            using var doc = JsonDocument.Parse(ReadShared(activeFile), Lenient);
-            foreach (var p in doc.RootElement.EnumerateObject())
-                if (p.Value.ValueKind == JsonValueKind.String) active[p.Name] = p.Value.GetString()!;
+            try
+            {
+                using var doc = JsonDocument.Parse(ReadShared(activeFile), Lenient);
+                foreach (var p in doc.RootElement.EnumerateObject())
+                    if (p.Value.ValueKind == JsonValueKind.String) active[p.Name] = p.Value.GetString()!;
+            }
+            catch (Exception e) when (e is JsonException or InvalidOperationException or IOException)
+            {
+                active.Clear();   // mid-write or not an object: show no active roles rather than fail the whole load
+            }
         }
 
         return new PenumbraData
