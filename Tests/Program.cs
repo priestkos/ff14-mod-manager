@@ -132,6 +132,8 @@ try
           && !Analysis.Cleanup(p, [byName]).Any(r => r.Kind == "Design links missing mod"),
         "C: design mod without Directory links by name (any case), not reported missing");
     var cleanup = Analysis.Cleanup(p, designs);
+    var twin = new PenumbraData { Mods = [new() { Name = "Same", Dir = "Same" }, new() { Name = "Same", Dir = "Same (2)" }] };
+    Check(Analysis.Unused(twin, []).Select(m => m.Dir).SequenceEqual(["Same", "Same (2)"]), "B: unused mods with the same name are both counted, by directory");
     Check(cleanup.Any(r => r.Kind == "Unused mod" && r.Item == "mod a "), "B: never-enabled, unlinked mod flagged");
     Check(!cleanup.Any(r => r.Kind == "Unused mod" && (r.Item == "Mod A" || r.Item.StartsWith("Big"))), "B: enabled or design-linked mods not flagged");
     Check(cleanup.Any(r => r.Kind == "Design links missing mod" && r.Detail.Contains("Missing")), "B: design linking a missing mod flagged");

@@ -575,7 +575,7 @@ public partial class MainWindow : Window
     {
         if (pen == null) return;
         var rows = Analysis.Cleanup(pen, designs);
-        var unused = rows.Where(r => r.Kind == "Unused mod").Select(r => pen.Mods.First(m => m.Name == r.Item)).ToList();
+        var unused = Analysis.Unused(pen, designs);   // by mod, not by name: two unused mods may share a name
         ShowReport(rows, $"Report only, nothing is deleted. {unused.Count} mods are enabled in no collection and linked by no design" +
             (SizesReady ? $" ({unused.Sum(m => m.Size) / (double)(1L << 30):0.0} GB)." : " (sizes still being measured).") +
             " Penumbra may still apply some through temporary settings or other plugins.");

@@ -24,16 +24,16 @@ public static partial class Analysis
     public static bool Links(DesignMod dm, Mod mod) =>
         dm.Dir != "" ? dm.Dir.Equals(mod.Dir, StringComparison.OrdinalIgnoreCase) : dm.Name.Equals(mod.Name, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>Mods enabled in no collection and linked by no design.</summary>
+    public static List<Mod> Unused(PenumbraData p, List<Design> designs) =>
+        p.Mods.Where(m => !p.Collections.Any(c => c.Settings.TryGetValue(m.Dir, out var s) && s.Enabled) && UsedBy(designs, m).Count == 0).ToList();
+
     /// <summary>B: cleanup candidates. Report only; nothing here deletes.</summary>
     public static List<ReportRow> Cleanup(PenumbraData p, List<Design> designs)
     {
         var rows = new List<ReportRow>();
-        foreach (var m in p.Mods)
-        {
-            var on = p.Collections.Where(c => c.Settings.TryGetValue(m.Dir, out var s) && s.Enabled).Select(c => c.Name).ToList();
-            if (on.Count == 0 && UsedBy(designs, m).Count == 0)
-                rows.Add(new("Unused mod", m.Name, $"enabled in no collection, linked by no design · {m.SizeText} · {Display(m.Folder)}"));
-        }
+        foreach (var m in Unused(p, designs))
+            rows.Add(new("Unused mod", m.Name, $"enabled in no collection, linked by no design · {m.SizeText} · {Display(m.Folder)}"));
         foreach (var d in designs)
             foreach (var dm in d.Mods.Where(dm => !p.Mods.Any(m => Links(dm, m))))
                 rows.Add(new("Design links missing mod", d.Name, $"{dm.Name} ({dm.Dir})"));
