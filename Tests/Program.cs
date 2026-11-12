@@ -311,6 +311,23 @@ try
         return await ask;
     }
     Check(await AskRaw("[1]") == null && await AskRaw("{bad") == null, "bridge: non-object or malformed reply = null, not an exception");
+    NamedPipeClientStream RawClient() => new(".", pipe, PipeDirection.InOut, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+    await using (var raw = RawClient())
+    {
+        await raw.ConnectAsync(2000);
+        await using var w = new StreamWriter(raw, leaveOpen: true) { AutoFlush = true };
+        await w.WriteLineAsync("[1]");
+        var reply = await new StreamReader(raw, leaveOpen: true).ReadLineAsync();
+        Check(reply == "{\"ok\":false,\"error\":\"not an object\"}", $"bridge: non-object request rejected ({reply})");
+    }
+    await using (var silent = RawClient())   // connects, never writes: the server drops it after 1 s
+    {
+        await silent.ConnectAsync(2000);
+        var swSilent = System.Diagnostics.Stopwatch.StartNew();
+        var afterSilent = await Bridge.Ask(new JsonObject { ["cmd"] = "after" }, pipeName: pipe);
+        Check((string?)afterSilent?["echo"] == "after",   // Ask's 2 s connect wait would otherwise return null
+            $"bridge: a silent client does not block the next one ({swSilent.ElapsedMilliseconds} ms)");
+    }
     cts.Cancel();
     await server.WaitAsync(TimeSpan.FromSeconds(5));
     var sw = System.Diagnostics.Stopwatch.StartNew();
