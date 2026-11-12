@@ -21,8 +21,6 @@ public sealed class Design
 
 public static class GlamourerData
 {
-    static readonly JsonDocumentOptions Lenient = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
-
     public static List<Design> Load(string pluginConfigs)
     {
         var dir = Path.Combine(pluginConfigs, "Glamourer", "designs");
@@ -38,16 +36,15 @@ public static class GlamourerData
     {
         try
         {
-            using var doc = JsonDocument.Parse(PenumbraData.ReadShared(file), Lenient);
+            using var doc = JsonDocument.Parse(PenumbraData.ReadShared(file), PenumbraData.Lenient);
             var r = doc.RootElement;
-            string S(string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
-            var id = S("Identifier");
-            var folder = S("FileSystemFolder");
+            var id = PenumbraData.Str(r, "Identifier");
+            var folder = PenumbraData.Str(r, "FileSystemFolder");
             if (folder == "" && legacyFolders?.TryGetValue(id, out var full) == true && full.LastIndexOf('/') is var cut and > 0)
                 folder = full[..cut];
             return new Design
             {
-                Id = id, Name = S("Name"), Description = S("Description"), Folder = folder, FilePath = file,
+                Id = id, Name = PenumbraData.Str(r, "Name"), Description = PenumbraData.Str(r, "Description"), Folder = folder, FilePath = file,
                 FileVersion = r.TryGetProperty("FileVersion", out var fv) && fv.TryGetInt32(out var v) ? v : 0,
                 LastEdit = ReadDate(r, "LastEdit"),
                 Tags = r.TryGetProperty("Tags", out var t) && t.ValueKind == JsonValueKind.Array
@@ -83,7 +80,7 @@ public static class GlamourerData
         if (!File.Exists(f)) return map;
         try
         {
-            using var doc = JsonDocument.Parse(PenumbraData.ReadShared(f), Lenient);
+            using var doc = JsonDocument.Parse(PenumbraData.ReadShared(f), PenumbraData.Lenient);
             if (doc.RootElement.TryGetProperty("Data", out var data))
                 foreach (var p in data.EnumerateObject())
                     if (p.Value.ValueKind == JsonValueKind.String) map[p.Name] = p.Value.GetString()!;

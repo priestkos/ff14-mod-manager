@@ -83,7 +83,10 @@ public sealed class PenumbraData
         return null;
     }
 
-    static readonly JsonDocumentOptions Lenient = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
+    internal static readonly JsonDocumentOptions Lenient = new() { AllowTrailingCommas = true, CommentHandling = JsonCommentHandling.Skip };
+
+    /// <summary>String property or "" when absent or not a string.</summary>
+    internal static string Str(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
 
     /// <param name="pluginConfigs">%APPDATA%\XIVLauncher\pluginConfigs</param>
     /// <param name="cacheDir">where mod_data.db is copied before reading, so Penumbra's lock is never touched</param>
@@ -157,7 +160,6 @@ public sealed class PenumbraData
         {
             using var doc = JsonDocument.Parse(ReadShared(meta), Lenient);
             var r = doc.RootElement;
-            string S(string k) => r.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
             string[] defaults = [];
             ModGroup[] groups = [];
             string? filesError = null;
@@ -167,8 +169,8 @@ public sealed class PenumbraData
             {
                 DefaultPaths = defaults, Groups = groups, MetaError = filesError,
                 Outfits = defaults.Concat(groups.SelectMany(g => g.Options.SelectMany(o => o))).Select(Analysis.Outfit).OfType<string>().Distinct().Order(StringComparer.Ordinal).ToArray(),
-                Dir = dir, FullPath = path, Name = S("Name") is { Length: > 0 } n ? n : dir,
-                Author = S("Author"), Version = S("Version"), Description = S("Description"), Website = S("Website"),
+                Dir = dir, FullPath = path, Name = Str(r, "Name") is { Length: > 0 } n ? n : dir,
+                Author = Str(r, "Author"), Version = Str(r, "Version"), Description = Str(r, "Description"), Website = Str(r, "Website"),
                 Tags = r.TryGetProperty("ModTags", out var t) && t.ValueKind == JsonValueKind.Array
                     ? t.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String).Select(x => x.GetString()!).ToArray() : [],
             };
@@ -198,11 +200,10 @@ public sealed class PenumbraData
 
     static ModGroup ReadGroup(JsonElement g)
     {
-        string S(string k) => g.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString()! : "";
-        var type = S("Type");
+        var type = Str(g, "Type");
         // Combining groups keep their files in Containers, one per combination of options.
         var list = type == "Combining" && g.TryGetProperty("Containers", out var c) ? c : g.TryGetProperty("Options", out var o) ? o : default;
-        return new ModGroup(S("Name"), type,
+        return new ModGroup(Str(g, "Name"), type,
             g.TryGetProperty("DefaultSettings", out var d) && d.TryGetUInt64(out var dv) ? dv : 0,
             list.ValueKind == JsonValueKind.Array ? list.EnumerateArray().Select(Changed).ToArray() : []);
     }
