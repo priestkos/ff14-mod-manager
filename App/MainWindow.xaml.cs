@@ -130,8 +130,6 @@ public partial class MainWindow : Window
         _ => true,
     };
 
-    static bool Has(string s, string q) => s.Contains(q, StringComparison.OrdinalIgnoreCase);
-
     async void Reload_Click(object sender, RoutedEventArgs e) => await LoadAsync();
 
     void Theme_Changed(object sender, SelectionChangedEventArgs e)
@@ -229,7 +227,7 @@ public partial class MainWindow : Window
     void TagSearch_Changed(object? sender, RoutedEventArgs? e)
     {
         var q = TagSearch.Text.Trim();
-        TagList.ItemsSource = q == "" ? tagChoices : tagChoices.Where(c => Has(c.Name, q)).ToList();
+        TagList.ItemsSource = q == "" ? tagChoices : tagChoices.Where(c => Analysis.Has(c.Name, q)).ToList();
     }
 
     void ModFocus_Click(object sender, RoutedEventArgs e) => SetOverlapFocus(overlapFocus == null ? SelectedMod : null);
@@ -339,7 +337,7 @@ public partial class MainWindow : Window
     {
         var ov = (Overlap)o;
         var q = OverlapSearch.Text.Trim();
-        return q == "" || Has(ov.Mod.Name, q) || Has(ov.WithText, q) || Has(ov.OutfitsText, q) || q.Length >= 5 && ov.Paths.Any(x => Has(x, q));
+        return q == "" || Analysis.Has(ov.Mod.Name, q) || Analysis.Has(ov.WithText, q) || Analysis.Has(ov.OutfitsText, q) || q.Length >= 5 && ov.Paths.Any(x => Analysis.Has(x, q));
     }
 
     void OverlapFilter_Changed(object sender, RoutedEventArgs e)
@@ -364,7 +362,7 @@ public partial class MainWindow : Window
     {
         var d = (Design)o;
         var q = DesignSearch.Text.Trim();
-        return (q == "" || Has(d.Name, q) || Has(d.TagsText, q) || Has(d.Description, q) || Has(d.Folder, q))
+        return (q == "" || Analysis.Has(d.Name, q) || Analysis.Has(d.TagsText, q) || Analysis.Has(d.Description, q) || Analysis.Has(d.Folder, q))
             && InFolder(d.Folder, DesignFolder.SelectedItem);
     }
 

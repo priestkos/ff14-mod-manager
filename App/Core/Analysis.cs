@@ -281,7 +281,7 @@ public static partial class Analysis
         return Has(m.Description, q) ? 2 : null;
     }
 
-    static bool Has(string s, string q) => s.Contains(q, StringComparison.OrdinalIgnoreCase);
+    internal static bool Has(string s, string q) => s.Contains(q, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>Pseudo-tag for the tag filter: required = mods with no tags at all, excluded = mods with at least one.</summary>
     public const string Untagged = "(no tags)";
