@@ -383,7 +383,7 @@ public partial class MainWindow : Window
         DesignInfo.Text = $"Folder: {Analysis.Display(d.Folder)}\nLast edit: {d.LastEdit:yyyy-MM-dd HH:mm}\n" +
                           (d.TagsText != "" ? $"Tags: {d.TagsText}\n" : "") + $"{shotCount} screenshot(s) · file format v{d.FileVersion}";
         DesignMods.Text = d.Mods.Count == 0 ? "none" : string.Join("\n", d.Mods.Select(dm =>
-            pen?.Mods.Any(m => m.Dir.Equals(dm.Dir, StringComparison.OrdinalIgnoreCase)) == true
+            pen?.Mods.Any(m => Analysis.Links(dm, m)) == true
                 ? $"✓ {dm.Name}{(dm.Enabled ? "" : " (set to off)")}" : $"✗ {dm.Name} — not installed"));
         DesignDesc.Text = d.Description;
     }

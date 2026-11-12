@@ -20,7 +20,8 @@ public static partial class Analysis
     public static List<Design> UsedBy(IEnumerable<Design> designs, Mod mod) =>
         designs.Where(d => d.Mods.Any(m => Links(m, mod))).ToList();
 
-    static bool Links(DesignMod dm, Mod mod) =>
+    /// <summary>The one design-to-mod match rule (UsedBy, Cleanup and the design pane all use it).</summary>
+    public static bool Links(DesignMod dm, Mod mod) =>
         dm.Dir != "" ? dm.Dir.Equals(mod.Dir, StringComparison.OrdinalIgnoreCase) : dm.Name.Equals(mod.Name, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>B: cleanup candidates. Report only; nothing here deletes.</summary>

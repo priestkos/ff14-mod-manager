@@ -127,6 +127,10 @@ try
     foreach (var m in p.Mods) m.Size = PenumbraData.DirSize(m.FullPath);
     Check(M("Big").Size > 3_000_000, "DirSize counts nested files");
     Check(Analysis.UsedBy(designs, M("Big")).SequenceEqual([d1]) && Analysis.UsedBy(designs, M("ModA")).Count == 0, "C: which designs use a mod");
+    var byName = new Design { Name = "Old design", Mods = [new DesignMod("MOD A", "", true)] };   // saved before designs stored Directory
+    Check(Analysis.Links(byName.Mods[0], M("ModA")) && Analysis.UsedBy([byName], M("ModA")).SequenceEqual([byName])
+          && !Analysis.Cleanup(p, [byName]).Any(r => r.Kind == "Design links missing mod"),
+        "C: design mod without Directory links by name (any case), not reported missing");
     var cleanup = Analysis.Cleanup(p, designs);
     Check(cleanup.Any(r => r.Kind == "Unused mod" && r.Item == "mod a "), "B: never-enabled, unlinked mod flagged");
     Check(!cleanup.Any(r => r.Kind == "Unused mod" && (r.Item == "Mod A" || r.Item.StartsWith("Big"))), "B: enabled or design-linked mods not flagged");
