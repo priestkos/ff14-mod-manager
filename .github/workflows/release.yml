@@ -70,16 +70,19 @@ jobs:
             $nextVersion = Get-FourPartVersion $env:GITHUB_REF_NAME
           } elseif ($isMainPush) {
             $highestRelease = $null
-            $tagNames = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate -q '.[].tag_name' 2>$null
-            if ($tagNames) {
-              foreach ($tagName in ($tagNames -split "`n")) {
-                $tagName = $tagName.Trim()
-                if ([string]::IsNullOrWhiteSpace($tagName)) { continue }
-                if ($tagName -notmatch '^v\d') { continue }
-                $candidate = Get-FourPartVersion $tagName
-                if (-not $highestRelease -or $candidate -gt $highestRelease) {
-                  $highestRelease = $candidate
-                }
+            # One call: "tag<TAB>target commit" per release, for the version and the already-released check.
+            $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate -q '.[] | [.tag_name, .target_commitish] | @tsv' 2>$null
+            foreach ($line in @($releases -split "`n")) {
+              $tagName, $target = $line.Trim() -split "`t"
+              if ($target -eq $env:GITHUB_SHA) {
+                Write-Host "Commit $env:GITHUB_SHA already has release $tagName; skipping."
+                echo "SKIP_RELEASE=true" >> $env:GITHUB_ENV
+                exit 0
+              }
+              if ($tagName -notmatch '^v\d') { continue }
+              $candidate = Get-FourPartVersion $tagName
+              if (-not $highestRelease -or $candidate -gt $highestRelease) {
+                $highestRelease = $candidate
               }
             }
             if (-not $highestRelease -or $csprojVersion -gt $highestRelease) {
@@ -91,17 +94,6 @@ jobs:
                 $highestRelease.Build,
                 $highestRelease.Revision + 1
               )
-            }
-
-            $releasesJson = gh api "repos/$env:GITHUB_REPOSITORY/releases" --paginate 2>$null
-            if ($releasesJson) {
-              foreach ($release in @($releasesJson | ConvertFrom-Json)) {
-                if ([string]$release.target_commitish -eq $env:GITHUB_SHA) {
-                  Write-Host "Commit $env:GITHUB_SHA already has release $($release.tag_name); skipping."
-                  echo "SKIP_RELEASE=true" >> $env:GITHUB_ENV
-                  exit 0
-                }
-              }
             }
           } else {
             $nextVersion = $csprojVersion
